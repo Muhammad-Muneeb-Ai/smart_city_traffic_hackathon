@@ -9,4 +9,3 @@ numpy
 torch
 torchvision
 pillow
-pydantic
