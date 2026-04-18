@@ -1,20 +1,9 @@
 {
-  "name": "trafficflow-ai",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "anpr-streamlit-app",
+  "version": "1.0.0",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-
-  },
-  "devDependencies": {
-    "@types/node": "^22.14.0",
-    
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "dev": "echo 'Installing AI dependencies (this takes ~1 min)...' && pip install -r requirements.txt --no-cache-dir && echo 'Starting Streamlit Dashboard...' && python3 -m streamlit run app.py --server.port 3000 --server.address 0.0.0.0 --server.headless true",
+    "build": "echo 'No build required for Streamlit'",
+    "start": "python3 -m streamlit run app.py --server.port 3000 --server.address 0.0.0.0 --server.headless true"
   }
 }
