@@ -5,9 +5,6 @@ import numpy as np
 import pandas as pd
 import time
 import os
-import sqlite3
-from datetime import datetime
-from PIL import Image
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
 import easyocr
