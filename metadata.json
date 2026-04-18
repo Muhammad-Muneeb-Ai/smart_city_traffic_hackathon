@@ -1,0 +1,6 @@
+{
+  "name": "TrafficFlow AI",
+  "description": "Real-time ANPR traffic monitoring and analytics suite with YOLOv8 vehicle detection and smart filtering.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
