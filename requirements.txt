@@ -1,0 +1,13 @@
+ultralytics
+opencv-python
+deep-sort-realtime==1.3.0
+easyocr==1.7.0
+streamlit
+fastapi
+uvicorn
+pandas
+plotly
+requests
+python-dotenv
+torch
+torchvision

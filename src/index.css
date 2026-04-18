@@ -6,27 +6,46 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-serif: "Playfair Display", serif;
   
-  --color-surface-950: #0a0a0b;
-  --color-surface-900: #121214;
-  --color-surface-800: #1a1a1e;
-  --color-surface-700: #27272a;
-  --color-accent: #0070eb;
+  --color-surface-50: #f8fafc;
+  --color-surface-100: #f1f5f9;
+  --color-surface-200: #e2e8f0;
+  --color-accent: #0058bc;
+  --color-accent-600: #004493;
 }
 
 @layer base {
   body {
-    @apply bg-surface-950 text-zinc-100 antialiased;
+    @apply bg-surface-50 text-slate-900 antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
+.stitch-card {
+  @apply bg-white rounded-[24px];
+  box-shadow: 0 4px 20px rgba(17, 28, 45, 0.04), 0 10px 40px rgba(17, 28, 45, 0.06);
+}
+
 .technical-grid {
   background-image: 
-    linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+    linear-gradient(to right, rgba(0, 88, 188, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 88, 188, 0.02) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
-.glow-primary {
-  box-shadow: 0 0 20px rgba(0, 112, 235, 0.15);
+.glow-accent {
+  box-shadow: 0 0 20px rgba(0, 88, 188, 0.1);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-300;
 }
