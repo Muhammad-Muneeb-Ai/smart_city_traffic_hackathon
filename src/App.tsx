@@ -25,7 +25,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 
 // --- Types ---
-type NavItem = "overview" | "nodes" | "logs" | "analytics" | "health";
+type NavItem = "overview" | "analytics" | "health" | "config" | "map";
 
 interface VehicleLog {
   id: string;
@@ -40,11 +40,11 @@ interface VehicleLog {
 
 const Sidebar = ({ active, setActive }: { active: NavItem, setActive: (v: NavItem) => void }) => {
   const items = [
-    { id: "overview", label: "Overview", icon: LayoutDashboard },
-    { id: "nodes", label: "Traffic Nodes", icon: Camera },
-    { id: "logs", label: "Vehicle Logs", icon: Car },
-    { id: "analytics", label: "Analytics", icon: BarChart3 },
+    { id: "overview", label: "Dashboard", icon: LayoutDashboard },
+    { id: "analytics", label: "Advanced Analytics", icon: BarChart3 },
     { id: "health", label: "System Health", icon: Zap },
+    { id: "config", label: "Node Configuration", icon: Settings },
+    { id: "map", label: "Traffic Map View", icon: MapIcon },
   ] as const;
 
   return (
@@ -91,7 +91,12 @@ const Sidebar = ({ active, setActive }: { active: NavItem, setActive: (v: NavIte
           </div>
         </div>
         
-        <button className="w-full bg-accent hover:bg-accent-600 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-lg glow-accent">
+        <button 
+          onClick={() => {
+            alert("Generating System Report... The CSV export will download from the Streamlit backend shortly.");
+          }}
+          className="w-full bg-accent hover:bg-accent-600 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-lg glow-accent active:scale-95"
+        >
           Export Reports
         </button>
         <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
@@ -231,134 +236,122 @@ export default function App() {
 
         {/* Content */}
         <div className="p-8 max-w-7xl mx-auto space-y-8">
-          <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <StatCard label="Total Vehicle Volume" value="1.24M" trend="+8.4%" icon={Car} />
-            <StatCard label="Avg Wait Time" value="4m 12s" trend="-2.1%" icon={Clock} />
-            <StatCard label="Critical Alerts" value="03" trend="0" icon={ShieldCheck} />
-            <StatCard label="System Uptime" value="99.8%" icon={Zap} />
-          </section>
+          <AnimatePresence mode="wait">
+            {activeTab === "overview" && (
+              <motion.div 
+                key="overview"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-8"
+              >
+                <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <StatCard label="Total Vehicle Volume" value="1.24M" trend="+8.4%" icon={Car} />
+                  <StatCard label="Avg Wait Time" value="4m 12s" trend="-2.1%" icon={Clock} />
+                  <StatCard label="Critical Alerts" value="03" trend="0" icon={ShieldCheck} />
+                  <StatCard label="System Uptime" value="99.8%" icon={Zap} />
+                </section>
 
-          {/* New Crossing counters section */}
-          <div className="stitch-card p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-sm tracking-tight flex items-center gap-2 text-slate-800">
-                <BarChart3 size={16} className="text-accent" />
-                Virtual Line Crossing Counters (Current Session)
-              </h3>
-              <div className="text-[10px] bg-slate-50 px-2 py-1 rounded text-slate-400 font-mono border border-slate-100">Line Y=480</div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-               {[
-                 { label: "Cars", val: 842, color: "text-blue-600" },
-                 { label: "Bikes", val: 124, color: "text-amber-600" },
-                 { label: "Buses", val: 42, color: "text-emerald-600" },
-                 { label: "Trucks", val: 89, color: "text-purple-600" }
-               ].map(stat => (
-                 <div key={stat.label} className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                   <p className="text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-tight">{stat.label}</p>
-                   <p className={`text-2xl font-bold font-mono ${stat.color}`}>{stat.val}</p>
-                 </div>
-               ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-8 space-y-8">
-              <VehicleDetectionTable />
-              
-              {/* Detailed LPR Analysis View */}
-              <div className="stitch-card p-8 technical-grid">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                  <div>
-                    <h3 className="text-xl font-bold tracking-tight text-slate-800">Active LPR Analysis: KRT-9201</h3>
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Status: Processing OCR Layer</p>
+                <div className="stitch-card p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-sm tracking-tight flex items-center gap-2 text-slate-800">
+                      <BarChart3 size={16} className="text-accent" />
+                      Virtual Line Crossing Counters (Current Session)
+                    </h3>
+                    <div className="text-[10px] bg-slate-50 px-2 py-1 rounded text-slate-400 font-mono border border-slate-100">Line Y=480</div>
                   </div>
-                  <div className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold border border-emerald-100">
-                    High Confidence Match: 98.5%
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest italic">License Plate Region (Cropped)</p>
-                    <div className="aspect-[3/1] bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-center p-4 overflow-hidden relative group">
-                      <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="text-4xl font-black font-mono tracking-[0.2em] text-slate-800 drop-shadow-sm">KRT 9201</div>
-                      <div className="absolute inset-0 border-[1px] border-emerald-500/20 m-2 rounded-lg pointer-events-none" />
-                    </div>
-                    <div className="flex gap-2">
-                       {['OCR_OK', 'STATE_CA', 'BATCH_49'].map(t => (
-                         <span key={t} className="px-2 py-0.5 bg-white rounded text-[8px] font-mono text-slate-400 border border-slate-200 shadow-sm">{t}</span>
-                       ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
-                      { label: "Make", val: "Tesla" },
-                      { label: "Model", val: "Model 3" },
-                      { label: "Color", val: "White" },
-                      { label: "State", val: "California" }
-                    ].map(field => (
-                      <div key={field.label} className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">{field.label}</p>
-                        <p className="text-sm font-semibold text-slate-700">{field.val}</p>
+                      { label: "Cars", val: 842, color: "text-blue-600" },
+                      { label: "Bikes", val: 124, color: "text-amber-600" },
+                      { label: "Buses", val: 42, color: "text-emerald-600" },
+                      { label: "Trucks", val: 89, color: "text-purple-600" }
+                    ].map(stat => (
+                      <div key={stat.label} className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-1 tracking-tight">{stat.label}</p>
+                        <p className={`text-2xl font-bold font-mono ${stat.color}`}>{stat.val}</p>
                       </div>
                     ))}
                   </div>
                 </div>
-              </div>
-            </div>
-            
-            <div className="lg:col-span-4 space-y-8">
-              {/* Camera Preview Mock */}
-              <div className="stitch-card p-6 relative group">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-sm flex items-center gap-2 text-slate-800">
-                    <Camera size={16} />
-                    Live Preview: Node-402
-                  </h3>
-                  <MoreVertical size={16} className="text-slate-400" />
-                </div>
-                <div className="aspect-video bg-slate-900 rounded-xl overflow-hidden relative border border-slate-200">
-                  <img 
-                    src="https://picsum.photos/seed/traffic/640/360" 
-                    alt="traffic-preview" 
-                    className="w-full h-full object-cover opacity-60 contrast-125"
-                    referrerPolicy="no-referrer" 
-                  />
-                  <div className="absolute inset-0 border-[2px] border-accent/40 m-6 rounded-lg">
-                    <div className="absolute top-0 left-0 bg-accent text-white text-[8px] font-bold px-1 py-0.5 -mt-2 -ml-2">
-                      VEHICLE_98.5%
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                  <div className="lg:col-span-8 space-y-8">
+                    <VehicleDetectionTable />
+                    <div className="stitch-card p-8 technical-grid">
+                      <h3 className="text-xl font-bold tracking-tight text-slate-800 mb-4">Realtime Stream: Node-402</h3>
+                      <div className="aspect-video bg-black rounded-2xl flex items-center justify-center text-slate-500 font-mono text-xs">
+                         [ ACTIVE_OPENCV_SURFACE ]
+                      </div>
                     </div>
                   </div>
-                  <div className="absolute bottom-2 left-2 text-[8px] font-mono text-white/50 bg-black/40 px-1.5 py-0.5 rounded backdrop-blur-sm">
-                    42.1009° N, 71.0112° W
+                  <div className="lg:col-span-4 space-y-8">
+                    <div className="stitch-card p-6">
+                      <h3 className="font-bold text-sm mb-4 flex items-center gap-2 text-slate-800">
+                        <Navigation size={16} /> Operational Topology
+                      </h3>
+                      <div className="h-48 bg-slate-50 rounded-xl border border-dashed border-slate-200" />
+                    </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
+            )}
 
-              {/* Network Graph Placeholder */}
-              <div className="stitch-card p-6">
-                <h3 className="font-bold text-sm mb-4 flex items-center gap-2 text-slate-800">
-                  <Navigation size={16} />
-                  Operational Topology
-                </h3>
-                <div className="h-48 bg-slate-50 flex items-center justify-center rounded-xl border border-dashed border-slate-200 relative overflow-hidden">
-                   <div className="absolute inset-0 opacity-10 technical-grid" />
-                   <div className="relative">
-                      <div className="w-12 h-12 bg-accent/20 rounded-full animate-ping absolute inset-0" />
-                      <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center relative shadow-lg glow-accent">
-                        <Database size={20} className="text-white" />
-                      </div>
+            {activeTab === "analytics" && (
+              <motion.div key="analytics" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                <div className="stitch-card p-12 text-center space-y-4">
+                   <BarChart3 className="mx-auto text-accent" size={48} />
+                   <h2 className="text-2xl font-bold">Advanced Analytics Visual Spec</h2>
+                   <p className="text-slate-500 max-w-md mx-auto">This view represents the 1_Advanced_Analytics.py Streamlit page. It features peak-hour heatmaps and long-term trend analysis.</p>
+                   <div className="aspect-[21/9] bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center italic text-slate-400">
+                      [ Interactive Plotly Layer Mock ]
                    </div>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-4 text-center leading-relaxed font-medium">
-                  Deep Packet Inspection (DPI) active across all grid nodes in the North Sector.
-                </p>
-              </div>
-            </div>
-          </div>
+              </motion.div>
+            )}
+
+            {activeTab === "health" && (
+              <motion.div key="health" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                <h3 className="font-bold text-lg">System Infrastructure Overview</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                   <div className="stitch-card p-6">
+                      <p className="text-[10px] uppercase font-bold text-slate-400">YOLO Cluster</p>
+                      <p className="text-xl font-bold text-emerald-600 mt-2">Active (45ms)</p>
+                   </div>
+                   <div className="stitch-card p-6">
+                      <p className="text-[10px] uppercase font-bold text-slate-400">OCR Hub</p>
+                      <p className="text-xl font-bold text-emerald-600 mt-2">Healthy</p>
+                   </div>
+                   <div className="stitch-card p-6">
+                      <p className="text-[10px] uppercase font-bold text-slate-400">SQLite Node</p>
+                      <p className="text-xl font-bold text-amber-600 mt-2">I/O Pressure: Low</p>
+                   </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === "config" && (
+              <motion.div key="config" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                <div className="stitch-card p-12 text-center">
+                   <Settings className="mx-auto text-slate-400 mb-4" size={48} />
+                   <h3 className="text-xl font-bold">Node Settings Configuration</h3>
+                   <div className="mt-8 space-y-4 max-w-sm mx-auto text-left">
+                      <div className="h-4 w-full bg-slate-100 rounded" />
+                      <div className="h-4 w-3/4 bg-slate-100 rounded" />
+                      <div className="h-4 w-full bg-slate-100 rounded" />
+                   </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === "map" && (
+              <motion.div key="map" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-12 text-center stitch-card border-accent/20">
+                 <MapIcon className="mx-auto text-accent mb-4" size={48} />
+                 <h2 className="text-xl font-bold italic font-serif">City Node GIS Overlay</h2>
+                 <p className="text-slate-400 text-sm mt-2">Real-time geographic distribution of active camera nodes.</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </main>
     </div>
