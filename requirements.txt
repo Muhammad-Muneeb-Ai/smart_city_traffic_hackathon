@@ -9,4 +9,5 @@ numpy
 torch
 torchvision
 pillow
+pydantic
 plotly

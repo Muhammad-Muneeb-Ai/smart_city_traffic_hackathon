@@ -3,6 +3,7 @@ import os
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
 
 # Local SQLite Database Path
 DB_DIR = "database"
@@ -12,11 +13,10 @@ DB_PATH = os.path.join(DB_DIR, DB_NAME)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("TRAFFIC_DB")
 
-class VehicleCrossing:
-    def __init__(self, vehicle_type: str, plate_number: str = "NOT_DETECTED"):
-        self.vehicle_type = vehicle_type
-        self.plate_number = plate_number
-        self.timestamp = datetime.now()
+class VehicleCrossing(BaseModel):
+    vehicle_type: str
+    plate_number: str = "NOT_DETECTED"
+    timestamp: datetime = Field(default_factory=datetime.now)
 
 class Database:
     _instance = None
