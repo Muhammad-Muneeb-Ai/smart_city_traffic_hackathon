@@ -1,9 +1,24 @@
 {
   "name": "anpr-streamlit-app",
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "dev": "echo 'Installing AI dependencies (this takes ~1 min)...' && pip install -r requirements.txt --no-cache-dir && echo 'Starting Streamlit Dashboard...' && python3 -m streamlit run app.py --server.port 3000 --server.address 0.0.0.0 --server.headless true",
-    "build": "echo 'No build required for Streamlit'",
-    "start": "python3 -m streamlit run app.py --server.port 3000 --server.address 0.0.0.0 --server.headless true"
+    "lint": "python3 -m py_compile app.py database.py pages/*.py",
+    "dev": "vite",
+    "build": "vite build",
+    "start": "vite preview"
+  },
+  "dependencies": {
+    "framer-motion": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "recharts": "latest"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.8"
   }
 }
