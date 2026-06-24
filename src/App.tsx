@@ -129,7 +129,7 @@ const App = () => {
       case 'analytics':
         return <AnalyticsView stats={MOCK_STATS} />;
       case 'history':
-        return <HistoryView logs={logs} settings={settings} />;
+        return <HistoryView logs={logs} settings={settings} onAddToast={addToast} />;
       case 'health':
         return <HealthView />;
       case 'config':
@@ -138,11 +138,11 @@ const App = () => {
             settings={settings} 
             onSave={(newSettings: any) => {
               setSettings(newSettings);
-              alert("Settings successfully saved and applied!");
+              addToast("Settings Saved", "Inference settings successfully saved and applied!", "System");
             }} 
             onReset={() => {
               setSettings(DEFAULT_SETTINGS);
-              alert("Settings restored to defaults!");
+              addToast("Settings Reset", "Inference settings restored to default values!", "System");
             }}
           />
         );
@@ -458,7 +458,7 @@ const AnalyticsView = ({ stats }: any) => (
   </div>
 );
 
-const HistoryView = ({ logs, settings }: any) => {
+const HistoryView = ({ logs, settings, onAddToast }: any) => {
   const exportCSV = () => {
     const headers = "ID,Vehicle,License Plate,Time,Confidence,Status\n";
     const rows = logs.map((log: any) => `${log.id},${log.type},${log.plate},${log.time},${log.confidence},${settings?.autoSaveCaptures ? 'Stored' : 'Cached'}`).join("\n");
@@ -468,7 +468,11 @@ const HistoryView = ({ logs, settings }: any) => {
     a.setAttribute('href', url);
     a.setAttribute('download', `traffic_logs_${Date.now()}.csv`);
     a.click();
-    alert("Logs exported successfully as CSV!");
+    if (onAddToast) {
+      onAddToast("Export Successful", "Traffic logs exported successfully as CSV!", "System");
+    } else {
+      alert("Logs exported successfully as CSV!");
+    }
   };
 
   const isAutoSave = settings?.autoSaveCaptures !== false;

@@ -5,8 +5,7 @@
   "scripts": {
     "lint": "python3 -m py_compile app.py database.py pages/*.py",
     "dev": "vite",
-    "build": "vite build",
-    "start": "vite preview"
+    "build": "vite build"
   },
   "dependencies": {
     "framer-motion": "latest",
