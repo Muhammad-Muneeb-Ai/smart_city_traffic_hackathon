@@ -48,20 +48,45 @@ const MOCK_LOGS = [
   { id: 4, type: 'Van', plate: 'NY-4422', time: '14:15:01', confidence: '0.88' },
 ];
 
+const DEFAULT_SETTINGS = {
+  confidenceThreshold: 0.45,
+  deepSortMaxAge: 30,
+  autoSaveCaptures: true,
+};
+
 const App = () => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [logs, setLogs] = useState(MOCK_LOGS);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [isRecalibrating, setIsRecalibrating] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number; message: string; sub: string; type: string }[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const addToast = (message: string, sub: string, type: string) => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, message, sub, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
 
   const handleNewFeed = () => {
     fileInputRef.current?.click();
   };
 
+  const handleRecalibrate = () => {
+    setIsRecalibrating(true);
+    setTimeout(() => {
+      setIsRecalibrating(false);
+      addToast("Sensor Calibration Complete", "All camera parameters successfully recalibrated to 100% accuracy", "System");
+    }, 1500);
+  };
+
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      alert(`New Feed Loaded: ${file.name}\nSystem is recalibrating for new video source...`);
+      addToast("New Feed Loaded", `Source: ${file.name}. Calibrating video streams...`, "System");
       // Simulate clearing logs for a fresh start
       setLogs([]);
       setTimeout(() => {
@@ -74,14 +99,27 @@ const App = () => {
   useEffect(() => {
     if (!isPlaying) return;
     const interval = setInterval(() => {
+      const confidenceVal = Math.random() * 0.2 + 0.8;
+      const vehicleType = Math.random() > 0.3 ? 'Car' : 'Truck';
+      const plate = `${['A','K','TX','NY'][Math.floor(Math.random()*4)]}-${Math.floor(Math.random()*9000)+1000}`;
+      
       const newLog = {
         id: Date.now(),
-        type: Math.random() > 0.3 ? 'Car' : 'Truck',
-        plate: `${['A','K','TX','NY'][Math.floor(Math.random()*4)]}-${Math.floor(Math.random()*9000)+1000}`,
+        type: vehicleType,
+        plate: plate,
         time: new Date().toLocaleTimeString(),
-        confidence: (Math.random() * 0.2 + 0.8).toFixed(2),
+        confidence: confidenceVal.toFixed(2),
       };
+
       setLogs(prev => [newLog, ...prev.slice(0, 5)]);
+
+      if (confidenceVal >= 0.95) {
+        addToast(
+          "High Confidence Detection!",
+          `${vehicleType.toUpperCase()} (${plate}) detected with ${(confidenceVal * 100).toFixed(0)}% confidence`,
+          vehicleType
+        );
+      }
     }, 4500);
     return () => clearInterval(interval);
   }, [isPlaying]);
@@ -91,11 +129,23 @@ const App = () => {
       case 'analytics':
         return <AnalyticsView stats={MOCK_STATS} />;
       case 'history':
-        return <HistoryView logs={logs} />;
+        return <HistoryView logs={logs} settings={settings} />;
       case 'health':
         return <HealthView />;
       case 'config':
-        return <ConfigView />;
+        return (
+          <ConfigView 
+            settings={settings} 
+            onSave={(newSettings: any) => {
+              setSettings(newSettings);
+              alert("Settings successfully saved and applied!");
+            }} 
+            onReset={() => {
+              setSettings(DEFAULT_SETTINGS);
+              alert("Settings restored to defaults!");
+            }}
+          />
+        );
       case 'dashboard':
       default:
         return (
@@ -147,16 +197,20 @@ const App = () => {
                   <div className="flex gap-8">
                     <div className="flex flex-col">
                       <span className="text-xs text-black/40 font-bold uppercase tracking-wider">Confidence Threshold</span>
-                      <span className="text-lg font-mono">0.45</span>
+                      <span className="text-lg font-mono">{settings.confidenceThreshold}</span>
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs text-black/40 font-bold uppercase tracking-wider">Detection Rate</span>
                       <span className="text-lg font-mono">842ms</span>
                     </div>
                   </div>
-                  <button className="flex items-center gap-2 text-[#ff4b4b] font-bold text-sm tracking-tight hover:underline">
-                    <RefreshCw size={14} />
-                    RECALIBRATE SENSORS
+                  <button 
+                    onClick={handleRecalibrate}
+                    disabled={isRecalibrating}
+                    className="flex items-center gap-2 text-[#ff4b4b] font-bold text-sm tracking-tight hover:underline disabled:opacity-50"
+                  >
+                    <RefreshCw size={14} className={isRecalibrating ? "animate-spin" : ""} />
+                    {isRecalibrating ? "RECALIBRATING..." : "RECALIBRATE SENSORS"}
                   </button>
                 </div>
               </div>
@@ -292,6 +346,50 @@ const App = () => {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Floating Toast Notification Container */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 max-w-sm pointer-events-none">
+        <AnimatePresence>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: 30, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.15 } }}
+              className="pointer-events-auto bg-[#141414] text-white p-4 rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.3)] border border-white/10 flex items-start gap-3 min-w-[320px]"
+            >
+              <div className="mt-0.5 shrink-0">
+                {toast.type === 'Car' ? (
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                    <Car size={16} />
+                  </div>
+                ) : toast.type === 'Truck' ? (
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 text-orange-400 flex items-center justify-center">
+                    <Truck size={16} />
+                  </div>
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-[#ff4b4b]/10 text-[#ff4b4b] flex items-center justify-center animate-pulse">
+                    <Activity size={16} />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+                  <span>{toast.message}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff4b4b] animate-ping" />
+                </h4>
+                <p className="text-[11px] text-white/60 mt-1 font-medium">{toast.sub}</p>
+              </div>
+              <button 
+                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                className="text-white/40 hover:text-white text-xs font-bold leading-none self-start p-1 cursor-pointer transition-colors"
+              >
+                ×
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };
@@ -360,49 +458,74 @@ const AnalyticsView = ({ stats }: any) => (
   </div>
 );
 
-const HistoryView = ({ logs }: any) => (
-  <div className="glass-card p-0 overflow-hidden">
-    <div className="p-6 border-b border-black/5 flex items-center justify-between bg-black/[0.01]">
-      <h3 className="font-bold flex items-center gap-2"><History size={18} /> Detection Catalog</h3>
-      <button className="text-xs font-bold uppercase tracking-widest text-black/40 hover:text-black">Export CSV</button>
-    </div>
-    <div className="overflow-x-auto">
-      <table className="w-full text-left">
-        <thead className="bg-black text-white text-[10px] uppercase font-bold tracking-widest">
-          <tr>
-            <th className="px-6 py-4">ID</th>
-            <th className="px-6 py-4">Vehicle</th>
-            <th className="px-6 py-4">License Plate</th>
-            <th className="px-6 py-4">Time</th>
-            <th className="px-6 py-4">Confidence</th>
-            <th className="px-6 py-4">Status</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-black/5">
-          {logs.map((log: any) => (
-            <tr key={log.id} className="hover:bg-black/[0.02] transition-colors">
-              <td className="px-6 py-4 text-xs font-mono">{log.id.toString().slice(-6)}</td>
-              <td className="px-6 py-4">
-                <div className="flex items-center gap-2">
-                  {log.type === 'Car' ? <Car size={14} className="text-blue-500" /> : <Truck size={14} className="text-orange-500" />}
-                  <span className="text-sm font-medium">{log.type}</span>
-                </div>
-              </td>
-              <td className="px-6 py-4">
-                <span className="px-2 py-1 bg-black text-white rounded text-[10px] font-bold font-mono">{log.plate}</span>
-              </td>
-              <td className="px-6 py-4 text-xs text-black/60">{log.time}</td>
-              <td className="px-6 py-4 text-xs font-mono font-bold text-green-600">{log.confidence}</td>
-              <td className="px-6 py-4">
-                <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold uppercase">Stored</span>
-              </td>
+const HistoryView = ({ logs, settings }: any) => {
+  const exportCSV = () => {
+    const headers = "ID,Vehicle,License Plate,Time,Confidence,Status\n";
+    const rows = logs.map((log: any) => `${log.id},${log.type},${log.plate},${log.time},${log.confidence},${settings?.autoSaveCaptures ? 'Stored' : 'Cached'}`).join("\n");
+    const blob = new Blob([headers + rows], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('href', url);
+    a.setAttribute('download', `traffic_logs_${Date.now()}.csv`);
+    a.click();
+    alert("Logs exported successfully as CSV!");
+  };
+
+  const isAutoSave = settings?.autoSaveCaptures !== false;
+
+  return (
+    <div className="glass-card p-0 overflow-hidden">
+      <div className="p-6 border-b border-black/5 flex items-center justify-between bg-black/[0.01]">
+        <h3 className="font-bold flex items-center gap-2"><History size={18} /> Detection Catalog</h3>
+        <button 
+          onClick={exportCSV}
+          className="text-xs font-bold uppercase tracking-widest text-[#ff4b4b] hover:text-[#ff4b4b]/80 cursor-pointer"
+        >
+          Export CSV
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead className="bg-black text-white text-[10px] uppercase font-bold tracking-widest">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Vehicle</th>
+              <th className="px-6 py-4">License Plate</th>
+              <th className="px-6 py-4">Time</th>
+              <th className="px-6 py-4">Confidence</th>
+              <th className="px-6 py-4">Status</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-black/5">
+            {logs.map((log: any) => (
+              <tr key={log.id} className="hover:bg-black/[0.02] transition-colors">
+                <td className="px-6 py-4 text-xs font-mono">{log.id.toString().slice(-6)}</td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    {log.type === 'Car' ? <Car size={14} className="text-blue-500" /> : <Truck size={14} className="text-orange-500" />}
+                    <span className="text-sm font-medium">{log.type}</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <span className="px-2 py-1 bg-black text-white rounded text-[10px] font-bold font-mono">{log.plate}</span>
+                </td>
+                <td className="px-6 py-4 text-xs text-black/60">{log.time}</td>
+                <td className="px-6 py-4 text-xs font-mono font-bold text-green-600">{log.confidence}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                    isAutoSave ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {isAutoSave ? 'Stored' : 'Cached Only'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const HealthView = () => (
   <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -439,35 +562,76 @@ const HealthView = () => (
   </div>
 );
 
-const ConfigView = () => (
-  <div className="max-w-2xl flex flex-col gap-8">
-    <div className="glass-card p-8">
-      <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><Settings size={20} /> Inference Settings</h3>
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold uppercase text-black/40">Detection Confidence Threshold</label>
-          <input type="range" className="w-full h-1.5 bg-black/10 rounded-lg appearance-none cursor-pointer accent-[#ff4b4b]" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold uppercase text-black/40">DeepSORT Max Age (Frames)</label>
-          <input type="number" defaultValue={30} className="p-3 bg-black/5 border-none rounded-xl text-sm outline-none focus:ring-1 ring-[#ff4b4b]" />
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col">
-            <span className="text-sm font-bold">Auto-Save Captures</span>
-            <span className="text-xs text-black/40">Save vehicle crops to storage</span>
+const ConfigView = ({ settings, onSave, onReset }: any) => {
+  const [localThreshold, setLocalThreshold] = useState(settings.confidenceThreshold);
+  const [localMaxAge, setLocalMaxAge] = useState(settings.deepSortMaxAge);
+  const [localAutoSave, setLocalAutoSave] = useState(settings.autoSaveCaptures);
+
+  useEffect(() => {
+    setLocalThreshold(settings.confidenceThreshold);
+    setLocalMaxAge(settings.deepSortMaxAge);
+    setLocalAutoSave(settings.autoSaveCaptures);
+  }, [settings]);
+
+  return (
+    <div className="max-w-2xl flex flex-col gap-8">
+      <div className="glass-card p-8">
+        <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><Settings size={20} /> Inference Settings</h3>
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-bold uppercase text-black/40">Detection Confidence Threshold</label>
+              <span className="text-xs font-mono font-bold bg-[#ff4b4b]/10 text-[#ff4b4b] px-2 py-0.5 rounded">{localThreshold}</span>
+            </div>
+            <input 
+              type="range" 
+              min="0.1" 
+              max="1.0" 
+              step="0.05"
+              value={localThreshold}
+              onChange={(e) => setLocalThreshold(parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-black/10 rounded-lg appearance-none cursor-pointer accent-[#ff4b4b]" 
+            />
           </div>
-          <button className="w-12 h-6 bg-[#ff4b4b] rounded-full relative">
-            <div className="absolute right-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow-sm" />
-          </button>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-bold uppercase text-black/40">DeepSORT Max Age (Frames)</label>
+            <input 
+              type="number" 
+              value={localMaxAge} 
+              onChange={(e) => setLocalMaxAge(parseInt(e.target.value) || 0)}
+              className="p-3 bg-black/5 border-none rounded-xl text-sm outline-none focus:ring-1 ring-[#ff4b4b] w-full" 
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-sm font-bold">Auto-Save Captures</span>
+              <span className="text-xs text-black/40">Save vehicle crops to storage</span>
+            </div>
+            <button 
+              onClick={() => setLocalAutoSave(!localAutoSave)}
+              className={`w-12 h-6 rounded-full relative transition-colors duration-200 ${localAutoSave ? 'bg-[#ff4b4b]' : 'bg-black/20'}`}
+            >
+              <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-200 ${localAutoSave ? 'right-0.5' : 'left-0.5'}`} />
+            </button>
+          </div>
         </div>
       </div>
+      <div className="flex gap-4">
+        <button 
+          onClick={() => onSave({ confidenceThreshold: localThreshold, deepSortMaxAge: localMaxAge, autoSaveCaptures: localAutoSave })}
+          className="flex-1 py-4 bg-black text-white font-bold rounded-2xl hover:bg-black/80 transition-all cursor-pointer"
+        >
+          Save Changes
+        </button>
+        <button 
+          onClick={onReset}
+          className="px-8 py-4 border border-black/10 font-bold rounded-2xl hover:bg-black/5 transition-all cursor-pointer"
+        >
+          Reset
+        </button>
+      </div>
     </div>
-    <div className="flex gap-4">
-      <button className="flex-1 py-4 bg-black text-white font-bold rounded-2xl hover:bg-black/80 transition-all">Save Changes</button>
-      <button className="px-8 py-4 border border-black/10 font-bold rounded-2xl hover:bg-black/5 transition-all">Reset</button>
-    </div>
-  </div>
-);
+  );
+};
 
 export default App;
