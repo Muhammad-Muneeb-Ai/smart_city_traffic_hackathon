@@ -9,6 +9,7 @@
     "start": "node dist/server.cjs"
   },
   "dependencies": {
+    "@google/genai": "^2.10.0",
     "express": "^5.2.1",
     "framer-motion": "latest",
     "lucide-react": "latest",

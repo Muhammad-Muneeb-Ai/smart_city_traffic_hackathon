@@ -72,6 +72,10 @@ const App = () => {
   const [toasts, setToasts] = useState<{ id: number; message: string; sub: string; type: string }[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [detectedBoxes, setDetectedBoxes] = useState<any[]>([]);
+
   useEffect(() => {
     localStorage.setItem('traffic_logs', JSON.stringify(logs));
   }, [logs]);
@@ -103,18 +107,73 @@ const App = () => {
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      addToast("New Feed Loaded", `Source: ${file.name}. Calibrating video streams...`, "System");
-      // Simulate clearing logs for a fresh start
-      setLogs([]);
-      setTimeout(() => {
-        setLogs(MOCK_LOGS);
-      }, 1000);
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64Url = event.target?.result as string;
+        setUploadedImage(base64Url);
+        setIsAnalyzing(true);
+        setDetectedBoxes([]);
+        addToast("Processing Feed", `Source: ${file.name}. Initializing computer vision engine...`, "System");
+
+        try {
+          // Strip data-url prefix
+          const base64Data = base64Url.split(",")[1];
+          const response = await fetch("/api/analyze-feed", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              image: base64Data,
+              mimeType: file.type,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP error ${response.status}`);
+          }
+
+          const data = await response.json();
+          if (data.detections && Array.isArray(data.detections)) {
+            // Map detected vehicles into logs
+            const newLogs = data.detections.map((d: any, index: number) => ({
+              id: Date.now() + index,
+              type: d.type || "Car",
+              plate: d.plate || "N/A",
+              time: new Date().toLocaleTimeString(),
+              confidence: (d.confidence / 100).toFixed(2),
+              color: d.color,
+              brand: d.brand,
+              box: d.box,
+            }));
+
+            setLogs(newLogs);
+            setDetectedBoxes(data.detections);
+            addToast(
+              "Analysis Complete",
+              `Found ${data.detections.length} vehicles! Detected: ${data.detections.map((v: any) => v.plate || v.type).filter(Boolean).join(", ")}`,
+              "System"
+            );
+          } else {
+            throw new Error("Invalid response format from API");
+          }
+        } catch (err: any) {
+          console.error(err);
+          addToast("AI Analysis Failed", err.message || "Failed to analyze the uploaded feed.", "System");
+          // Fallback to MOCK_LOGS so UI still looks functional
+          setLogs(MOCK_LOGS);
+        } finally {
+          setIsAnalyzing(false);
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
   // Simulate incoming logs
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || uploadedImage) return;
     const interval = setInterval(() => {
       const confidenceVal = Math.random() * 0.2 + 0.8;
       const vehicleType = Math.random() > 0.3 ? 'Car' : 'Truck';
@@ -139,7 +198,7 @@ const App = () => {
       }
     }, 4500);
     return () => clearInterval(interval);
-  }, [isPlaying]);
+  }, [isPlaying, uploadedImage]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -180,23 +239,77 @@ const App = () => {
               <div className="lg:col-span-2 flex flex-col gap-4">
                 <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group">
                   <img 
-                    src="https://picsum.photos/seed/traffic/1200/800" 
-                    className="w-full h-full object-cover opacity-70 grayscale-[0.3]" 
+                    src={uploadedImage || "https://picsum.photos/seed/traffic/1200/800"} 
+                    className={`w-full h-full object-cover transition-all duration-300 ${uploadedImage ? 'opacity-100' : 'opacity-70 grayscale-[0.3]'}`} 
                     alt="Traffic Feed"
                   />
                   
-                  {/* YOLO Bounding Box Overlays (Decorative) */}
-                  <div className="absolute top-[30%] left-[40%] w-32 h-24 border-2 border-green-500/80 rounded flex flex-col items-start p-1">
-                    <span className="bg-green-500 text-white text-[10px] px-1 font-bold">CAR 0.98</span>
-                  </div>
-                  <div className="absolute top-[60%] left-[10%] w-48 h-32 border-2 border-yellow-500/80 rounded flex flex-col items-start p-1">
-                    <span className="bg-yellow-500 text-white text-[10px] px-1 font-bold">TRUCK 0.94</span>
-                  </div>
+                  {/* Bounding Box Overlays */}
+                  {uploadedImage ? (
+                    // Draw actual, real AI detected bounding boxes from Gemini!
+                    !isAnalyzing && detectedBoxes.map((boxItem, idx) => {
+                      const { box, type, plate, confidence, color, brand } = boxItem;
+                      if (!box) return null;
+                      const top = `${box.ymin}%`;
+                      const left = `${box.xmin}%`;
+                      const height = `${box.ymax - box.ymin}%`;
+                      const width = `${box.xmax - box.xmin}%`;
+
+                      return (
+                        <div 
+                          key={idx} 
+                          className="absolute border-2 border-red-500 rounded flex flex-col items-start"
+                          style={{
+                            top,
+                            left,
+                            height,
+                            width,
+                            boxShadow: "0 0 8px rgba(239, 68, 68, 0.6)"
+                          }}
+                        >
+                          <span className="bg-red-500 text-white text-[9px] sm:text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap leading-tight rounded-br shadow-md">
+                            {type.toUpperCase()} {plate ? `[${plate}]` : ''} ({confidence}%)
+                          </span>
+                          {brand && (
+                            <span className="bg-black/80 text-white text-[8px] sm:text-[9px] px-1.5 py-0.5 font-medium whitespace-nowrap mt-0.5 rounded shadow-sm">
+                              {brand} ({color})
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    // YOLO Bounding Box Overlays (Decorative fallback)
+                    <>
+                      <div className="absolute top-[30%] left-[40%] w-32 h-24 border-2 border-green-500/80 rounded flex flex-col items-start p-1">
+                        <span className="bg-green-500 text-white text-[10px] px-1 font-bold">CAR 0.98</span>
+                      </div>
+                      <div className="absolute top-[60%] left-[10%] w-48 h-32 border-2 border-yellow-500/80 rounded flex flex-col items-start p-1">
+                        <span className="bg-yellow-500 text-white text-[10px] px-1 font-bold">TRUCK 0.94</span>
+                      </div>
+                    </>
+                  )}
                   
                   {/* Tracking Line */}
                   <div className="absolute top-[75%] left-0 w-full h-[2px] bg-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.5)]">
                     <div className="absolute -top-2 left-4 px-2 bg-red-500 text-white text-[10px] font-bold rounded">VIRTUAL DETECTION LINE</div>
                   </div>
+
+                  {/* Loading / Analyzing Overlay */}
+                  {isAnalyzing && (
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 z-10">
+                      <div className="relative flex items-center justify-center mb-4">
+                        <div className="w-12 h-12 border-4 border-red-500/20 border-t-red-500 rounded-full animate-spin" />
+                        <Activity className="absolute text-red-500 animate-pulse" size={20} />
+                      </div>
+                      <h4 className="text-white font-bold text-base sm:text-lg tracking-wider uppercase mb-1">
+                        Analyzing Image Feed
+                      </h4>
+                      <p className="text-white/60 text-xs sm:text-sm max-w-md">
+                        AI model is executing multimodal computer vision analysis to detect vehicle types, colors, models, and read license plates...
+                      </p>
+                    </div>
+                  )}
 
                   {/* Video Controls Overlay */}
                   <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/10 backdrop-blur-xl border border-white/20 p-2 px-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -205,7 +318,9 @@ const App = () => {
                     </button>
                     <div className="h-4 w-[1px] bg-white/20" />
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-white font-mono uppercase tracking-widest">LIVE RELAY // 1080P // 30FPS</span>
+                      <span className="text-[10px] text-white font-mono uppercase tracking-widest">
+                        {uploadedImage ? "STATIC FEED ANALYSIS" : "LIVE RELAY // 1080P // 30FPS"}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -397,9 +512,23 @@ const App = () => {
               className="hidden" 
               accept="video/*,image/*"
             />
+            {uploadedImage && (
+              <button 
+                onClick={() => {
+                  setUploadedImage(null);
+                  setDetectedBoxes([]);
+                  setLogs(MOCK_LOGS);
+                  addToast("Reset to Live Stream", "System restored to default simulated traffic stream", "System");
+                }}
+                className="flex items-center gap-2 px-3 py-2 border border-black/10 bg-white hover:bg-black/5 text-black rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              >
+                <RefreshCw size={16} />
+                Reset Feed
+              </button>
+            )}
             <button 
               onClick={handleNewFeed}
-              className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-black/80 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-black/80 transition-colors cursor-pointer"
             >
               <Upload size={16} />
               New Feed
