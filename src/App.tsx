@@ -52,6 +52,23 @@ const App = () => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [logs, setLogs] = useState(MOCK_LOGS);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleNewFeed = () => {
+    fileInputRef.current?.click();
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      alert(`New Feed Loaded: ${file.name}\nSystem is recalibrating for new video source...`);
+      // Simulate clearing logs for a fresh start
+      setLogs([]);
+      setTimeout(() => {
+        setLogs(MOCK_LOGS);
+      }, 1000);
+    }
+  };
 
   // Simulate incoming logs
   useEffect(() => {
@@ -68,6 +85,143 @@ const App = () => {
     }, 4500);
     return () => clearInterval(interval);
   }, [isPlaying]);
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'analytics':
+        return <AnalyticsView stats={MOCK_STATS} />;
+      case 'history':
+        return <HistoryView logs={logs} />;
+      case 'health':
+        return <HealthView />;
+      case 'config':
+        return <ConfigView />;
+      case 'dashboard':
+      default:
+        return (
+          <div className="flex flex-col gap-8">
+            {/* KPI Cards */}
+            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <StatCard icon={<Eye className="text-blue-500" />} label="Live Count" value="1,284" subValue="+12% from avg" />
+              <StatCard icon={<Car className="text-green-500" />} label="Avg Speed" value="48 km/h" subValue="Flow: Stable" />
+              <StatCard icon={<Database className="text-purple-500" />} label="Plates Detected" value="954" subValue="99.2% Accuracy" />
+              <StatCard icon={<AlertTriangle className="text-orange-500" />} label="Active Alerts" value="2" subValue="Low Intensity" />
+            </section>
+
+            {/* Video & Controls Area */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 flex flex-col gap-4">
+                <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group">
+                  <img 
+                    src="https://picsum.photos/seed/traffic/1200/800" 
+                    className="w-full h-full object-cover opacity-70 grayscale-[0.3]" 
+                    alt="Traffic Feed"
+                  />
+                  
+                  {/* YOLO Bounding Box Overlays (Decorative) */}
+                  <div className="absolute top-[30%] left-[40%] w-32 h-24 border-2 border-green-500/80 rounded flex flex-col items-start p-1">
+                    <span className="bg-green-500 text-white text-[10px] px-1 font-bold">CAR 0.98</span>
+                  </div>
+                  <div className="absolute top-[60%] left-[10%] w-48 h-32 border-2 border-yellow-500/80 rounded flex flex-col items-start p-1">
+                    <span className="bg-yellow-500 text-white text-[10px] px-1 font-bold">TRUCK 0.94</span>
+                  </div>
+                  
+                  {/* Tracking Line */}
+                  <div className="absolute top-[75%] left-0 w-full h-[2px] bg-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.5)]">
+                    <div className="absolute -top-2 left-4 px-2 bg-red-500 text-white text-[10px] font-bold rounded">VIRTUAL DETECTION LINE</div>
+                  </div>
+
+                  {/* Video Controls Overlay */}
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/10 backdrop-blur-xl border border-white/20 p-2 px-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <button className="text-white hover:text-[#ff4b4b]" onClick={() => setIsPlaying(!isPlaying)}>
+                      {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
+                    </button>
+                    <div className="h-4 w-[1px] bg-white/20" />
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-white font-mono uppercase tracking-widest">LIVE RELAY // 1080P // 30FPS</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="glass-card p-6 flex items-center justify-between">
+                  <div className="flex gap-8">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-black/40 font-bold uppercase tracking-wider">Confidence Threshold</span>
+                      <span className="text-lg font-mono">0.45</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-black/40 font-bold uppercase tracking-wider">Detection Rate</span>
+                      <span className="text-lg font-mono">842ms</span>
+                    </div>
+                  </div>
+                  <button className="flex items-center gap-2 text-[#ff4b4b] font-bold text-sm tracking-tight hover:underline">
+                    <RefreshCw size={14} />
+                    RECALIBRATE SENSORS
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-6">
+                <div className="glass-card p-6 flex-grow flex flex-col">
+                  <h3 className="text-sm font-bold uppercase tracking-[0.1em] text-black/40 mb-6 flex items-center gap-2">
+                    <Activity size={16} />
+                    Vehicle Flow History
+                  </h3>
+                  <div className="flex-grow h-[200px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={MOCK_STATS}>
+                        <defs>
+                          <linearGradient id="colorVeh" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ff4b4b" stopOpacity={0.1}/>
+                            <stop offset="95%" stopColor="#ff4b4b" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#14141408" />
+                        <XAxis dataKey="time" hide />
+                        <YAxis hide />
+                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                        <Area type="monotone" dataKey="vehicles" stroke="#ff4b4b" strokeWidth={2} fillOpacity={1} fill="url(#colorVeh)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="glass-card p-6 h-full overflow-hidden flex flex-col">
+                  <h3 className="text-sm font-bold uppercase tracking-[0.1em] text-black/40 mb-6 flex items-center justify-between">
+                    <span className="flex items-center gap-2"><FileText size={16} /> Live Data Stream</span>
+                    <span className="text-green-500 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> SYNC</span>
+                  </h3>
+                  <div className="flex flex-col gap-3 overflow-y-auto pr-2">
+                    <AnimatePresence mode="popLayout">
+                      {logs.map((log) => (
+                        <motion.div 
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          key={log.id} 
+                          className="flex items-center justify-between p-3 rounded-lg border border-black/5 hover:bg-black/[0.02] transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded flex items-center justify-center ${log.type === 'Car' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
+                              {log.type === 'Car' ? <Car size={16} /> : <Truck size={16} />}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold leading-none mb-1 uppercase tracking-tight">{log.plate}</p>
+                              <p className="text-[10px] text-black/40 font-medium">DETECTED @ {log.time}</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-black/5 rounded">{log.confidence}</span>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+    }
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
@@ -106,7 +260,17 @@ const App = () => {
             <span>/ Dashboard / Live Monitor</span>
           </div>
           <div className="flex items-center gap-4">
-            <button className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-black/80 transition-colors">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={onFileChange} 
+              className="hidden" 
+              accept="video/*,image/*"
+            />
+            <button 
+              onClick={handleNewFeed}
+              className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-black/80 transition-colors"
+            >
               <Upload size={16} />
               New Feed
             </button>
@@ -115,123 +279,17 @@ const App = () => {
 
         {/* Dashboard Content */}
         <div className="p-8 flex flex-col gap-8 max-w-[1600px] w-full mx-auto">
-          {/* KPI Cards */}
-          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard icon={<Eye className="text-blue-500" />} label="Live Count" value="1,284" subValue="+12% from avg" />
-            <StatCard icon={<Car className="text-green-500" />} label="Avg Speed" value="48 km/h" subValue="Flow: Stable" />
-            <StatCard icon={<Database className="text-purple-500" />} label="Plates Detected" value="954" subValue="99.2% Accuracy" />
-            <StatCard icon={<AlertTriangle className="text-orange-500" />} label="Active Alerts" value="2" subValue="Low Intensity" />
-          </section>
-
-          {/* Video & Controls Area */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 flex flex-col gap-4">
-              <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group">
-                <img 
-                  src="https://picsum.photos/seed/traffic/1200/800" 
-                  className="w-full h-full object-cover opacity-70 grayscale-[0.3]" 
-                  alt="Traffic Feed"
-                />
-                
-                {/* YOLO Bounding Box Overlays (Decorative) */}
-                <div className="absolute top-[30%] left-[40%] w-32 h-24 border-2 border-green-500/80 rounded flex flex-col items-start p-1">
-                  <span className="bg-green-500 text-white text-[10px] px-1 font-bold">CAR 0.98</span>
-                </div>
-                <div className="absolute top-[60%] left-[10%] w-48 h-32 border-2 border-yellow-500/80 rounded flex flex-col items-start p-1">
-                  <span className="bg-yellow-500 text-white text-[10px] px-1 font-bold">TRUCK 0.94</span>
-                </div>
-                
-                {/* Tracking Line */}
-                <div className="absolute top-[75%] left-0 w-full h-[2px] bg-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.5)]">
-                  <div className="absolute -top-2 left-4 px-2 bg-red-500 text-white text-[10px] font-bold rounded">VIRTUAL DETECTION LINE</div>
-                </div>
-
-                {/* Video Controls Overlay */}
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/10 backdrop-blur-xl border border-white/20 p-2 px-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <button className="text-white hover:text-[#ff4b4b]" onClick={() => setIsPlaying(!isPlaying)}>
-                    {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
-                  </button>
-                  <div className="h-4 w-[1px] bg-white/20" />
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-white font-mono uppercase tracking-widest">LIVE RELAY // 1080P // 30FPS</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="glass-card p-6 flex items-center justify-between">
-                <div className="flex gap-8">
-                  <div className="flex flex-col">
-                    <span className="text-xs text-black/40 font-bold uppercase tracking-wider">Confidence Threshold</span>
-                    <span className="text-lg font-mono">0.45</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs text-black/40 font-bold uppercase tracking-wider">Detection Rate</span>
-                    <span className="text-lg font-mono">842ms</span>
-                  </div>
-                </div>
-                <button className="flex items-center gap-2 text-[#ff4b4b] font-bold text-sm tracking-tight hover:underline">
-                  <RefreshCw size={14} />
-                  RECALIBRATE SENSORS
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-6">
-              <div className="glass-card p-6 flex-grow flex flex-col">
-                <h3 className="text-sm font-bold uppercase tracking-[0.1em] text-black/40 mb-6 flex items-center gap-2">
-                  <Activity size={16} />
-                  Vehicle Flow History
-                </h3>
-                <div className="flex-grow h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={MOCK_STATS}>
-                      <defs>
-                        <linearGradient id="colorVeh" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ff4b4b" stopOpacity={0.1}/>
-                          <stop offset="95%" stopColor="#ff4b4b" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#14141408" />
-                      <XAxis dataKey="time" hide />
-                      <YAxis hide />
-                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                      <Area type="monotone" dataKey="vehicles" stroke="#ff4b4b" strokeWidth={2} fillOpacity={1} fill="url(#colorVeh)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="glass-card p-6 h-full overflow-hidden flex flex-col">
-                <h3 className="text-sm font-bold uppercase tracking-[0.1em] text-black/40 mb-6 flex items-center justify-between">
-                  <span className="flex items-center gap-2"><FileText size={16} /> Live Data Stream</span>
-                  <span className="text-green-500 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> SYNC</span>
-                </h3>
-                <div className="flex flex-col gap-3 overflow-y-auto pr-2">
-                  <AnimatePresence>
-                    {logs.map((log) => (
-                      <motion.div 
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        key={log.id} 
-                        className="flex items-center justify-between p-3 rounded-lg border border-black/5 hover:bg-black/[0.02] transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded flex items-center justify-center ${log.type === 'Car' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
-                            {log.type === 'Car' ? <Car size={16} /> : <Truck size={16} />}
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold leading-none mb-1 uppercase tracking-tight">{log.plate}</p>
-                            <p className="text-[10px] text-black/40 font-medium">DETECTED @ {log.time}</p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-black/5 rounded">{log.confidence}</span>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </div>
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderContent()}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
     </div>
@@ -262,6 +320,152 @@ const StatCard = ({ icon, label, value, subValue }: any) => (
     <div className="flex items-baseline gap-2">
       <h4 className="text-2xl font-bold tracking-tighter">{value}</h4>
       <span className="text-[10px] font-semibold text-black/60">{subValue}</span>
+    </div>
+  </div>
+);
+
+// --- Sub-View Components ---
+
+const AnalyticsView = ({ stats }: any) => (
+  <div className="flex flex-col gap-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="glass-card p-8">
+        <h3 className="text-lg font-bold mb-6">Peak Traffic Hours</h3>
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stats}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#14141408" />
+              <XAxis dataKey="time" />
+              <YAxis hide />
+              <Tooltip />
+              <Bar dataKey="vehicles" fill="#ff4b4b" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      <div className="glass-card p-8">
+        <h3 className="text-lg font-bold mb-6">Traffic Intensity (Real-time)</h3>
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={stats}>
+              <XAxis dataKey="time" />
+              <YAxis hide />
+              <Tooltip />
+              <Area type="monotone" dataKey="vehicles" stroke="#ff4b4b" fill="#ff4b4b20" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const HistoryView = ({ logs }: any) => (
+  <div className="glass-card p-0 overflow-hidden">
+    <div className="p-6 border-b border-black/5 flex items-center justify-between bg-black/[0.01]">
+      <h3 className="font-bold flex items-center gap-2"><History size={18} /> Detection Catalog</h3>
+      <button className="text-xs font-bold uppercase tracking-widest text-black/40 hover:text-black">Export CSV</button>
+    </div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-left">
+        <thead className="bg-black text-white text-[10px] uppercase font-bold tracking-widest">
+          <tr>
+            <th className="px-6 py-4">ID</th>
+            <th className="px-6 py-4">Vehicle</th>
+            <th className="px-6 py-4">License Plate</th>
+            <th className="px-6 py-4">Time</th>
+            <th className="px-6 py-4">Confidence</th>
+            <th className="px-6 py-4">Status</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-black/5">
+          {logs.map((log: any) => (
+            <tr key={log.id} className="hover:bg-black/[0.02] transition-colors">
+              <td className="px-6 py-4 text-xs font-mono">{log.id.toString().slice(-6)}</td>
+              <td className="px-6 py-4">
+                <div className="flex items-center gap-2">
+                  {log.type === 'Car' ? <Car size={14} className="text-blue-500" /> : <Truck size={14} className="text-orange-500" />}
+                  <span className="text-sm font-medium">{log.type}</span>
+                </div>
+              </td>
+              <td className="px-6 py-4">
+                <span className="px-2 py-1 bg-black text-white rounded text-[10px] font-bold font-mono">{log.plate}</span>
+              </td>
+              <td className="px-6 py-4 text-xs text-black/60">{log.time}</td>
+              <td className="px-6 py-4 text-xs font-mono font-bold text-green-600">{log.confidence}</td>
+              <td className="px-6 py-4">
+                <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold uppercase">Stored</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
+const HealthView = () => (
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <div className="glass-card p-6 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-black/40 uppercase">CPU Usage</span>
+        <span className="text-green-500 font-bold">Stable</span>
+      </div>
+      <div className="h-2 w-full bg-black/5 rounded-full overflow-hidden">
+        <div className="h-full bg-green-500 w-[24%]" />
+      </div>
+      <p className="text-[10px] text-black/40">Load Average: 0.12, 0.44, 0.82</p>
+    </div>
+    <div className="glass-card p-6 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-black/40 uppercase">GPU Temp</span>
+        <span className="text-orange-500 font-bold">42°C</span>
+      </div>
+      <div className="h-2 w-full bg-black/5 rounded-full overflow-hidden">
+        <div className="h-full bg-orange-500 w-[68%]" />
+      </div>
+      <p className="text-[10px] text-black/40">Jetson Xavier Node // Active</p>
+    </div>
+    <div className="glass-card p-6 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-black/40 uppercase">API Latency</span>
+        <span className="text-blue-500 font-bold">Low</span>
+      </div>
+      <div className="h-2 w-full bg-black/5 rounded-full overflow-hidden">
+        <div className="h-full bg-blue-500 w-[12%]" />
+      </div>
+      <p className="text-[10px] text-black/40">Avg Response: 142ms</p>
+    </div>
+  </div>
+);
+
+const ConfigView = () => (
+  <div className="max-w-2xl flex flex-col gap-8">
+    <div className="glass-card p-8">
+      <h3 className="text-lg font-bold mb-6 flex items-center gap-2"><Settings size={20} /> Inference Settings</h3>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <label className="text-xs font-bold uppercase text-black/40">Detection Confidence Threshold</label>
+          <input type="range" className="w-full h-1.5 bg-black/10 rounded-lg appearance-none cursor-pointer accent-[#ff4b4b]" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="text-xs font-bold uppercase text-black/40">DeepSORT Max Age (Frames)</label>
+          <input type="number" defaultValue={30} className="p-3 bg-black/5 border-none rounded-xl text-sm outline-none focus:ring-1 ring-[#ff4b4b]" />
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col">
+            <span className="text-sm font-bold">Auto-Save Captures</span>
+            <span className="text-xs text-black/40">Save vehicle crops to storage</span>
+          </div>
+          <button className="w-12 h-6 bg-[#ff4b4b] rounded-full relative">
+            <div className="absolute right-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow-sm" />
+          </button>
+        </div>
+      </div>
+    </div>
+    <div className="flex gap-4">
+      <button className="flex-1 py-4 bg-black text-white font-bold rounded-2xl hover:bg-black/80 transition-all">Save Changes</button>
+      <button className="px-8 py-4 border border-black/10 font-bold rounded-2xl hover:bg-black/5 transition-all">Reset</button>
     </div>
   </div>
 );
