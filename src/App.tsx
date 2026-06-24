@@ -15,7 +15,9 @@ import {
   Play,
   Pause,
   Upload,
-  RefreshCw
+  RefreshCw,
+  Menu,
+  X
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -57,11 +59,26 @@ const DEFAULT_SETTINGS = {
 const App = () => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [logs, setLogs] = useState(MOCK_LOGS);
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [logs, setLogs] = useState(() => {
+    const saved = localStorage.getItem('traffic_logs');
+    return saved ? JSON.parse(saved) : MOCK_LOGS;
+  });
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('traffic_settings');
+    return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+  });
   const [isRecalibrating, setIsRecalibrating] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; message: string; sub: string; type: string }[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('traffic_logs', JSON.stringify(logs));
+  }, [logs]);
+
+  useEffect(() => {
+    localStorage.setItem('traffic_settings', JSON.stringify(settings));
+  }, [settings]);
 
   const addToast = (message: string, sub: string, type: string) => {
     const id = Date.now() + Math.random();
@@ -279,8 +296,61 @@ const App = () => {
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#141414] text-white flex flex-col p-6 gap-8">
+      {/* Mobile Drawer Overlay and Sidebar with Framer Motion */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 bg-black/60 z-40 lg:hidden cursor-pointer"
+            />
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "tween", ease: "easeInOut", duration: 0.25 }}
+              className="fixed inset-y-0 left-0 w-64 bg-[#141414] text-white flex flex-col p-6 gap-8 z-50 lg:hidden shadow-2xl"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#ff4b4b] rounded-lg flex items-center justify-center">
+                    <Activity className="text-white" size={24} />
+                  </div>
+                  <span className="font-bold text-xl tracking-tight">TRAFFICFLOW AI</span>
+                </div>
+                <button 
+                  onClick={() => setIsMobileMenuOpen(false)} 
+                  className="text-white/60 hover:text-white p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <nav className="flex flex-col gap-2 flex-grow">
+                <NavItem icon={<LayoutDashboard size={18} />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<BarChart3 size={18} />} label="Analytics" active={activeTab === 'analytics'} onClick={() => { setActiveTab('analytics'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<History size={18} />} label="Logs History" active={activeTab === 'history'} onClick={() => { setActiveTab('history'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<ShieldCheck size={18} />} label="System Health" active={activeTab === 'health'} onClick={() => { setActiveTab('health'); setIsMobileMenuOpen(false); }} />
+                <NavItem icon={<Settings size={18} />} label="Config" active={activeTab === 'config'} onClick={() => { setActiveTab('config'); setIsMobileMenuOpen(false); }} />
+              </nav>
+
+              <div className="bg-white/10 p-4 rounded-xl">
+                <p className="text-xs opacity-50 uppercase font-bold mb-2">Node Status</p>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-sm font-medium">System Online</span>
+                </div>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop Sidebar (Persistent) */}
+      <aside className="hidden lg:flex w-64 bg-[#141414] text-white flex-col p-6 gap-8 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-[#ff4b4b] rounded-lg flex items-center justify-center">
             <Activity className="text-white" size={24} />
@@ -308,10 +378,16 @@ const App = () => {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-[#F0EFEC] overflow-y-auto">
         {/* Header */}
-        <header className="h-20 border-b border-black/5 bg-white flex items-center justify-between px-8 shrink-0">
-          <div className="flex items-center gap-2 text-sm text-black/50">
-            <LayoutDashboard size={14} />
-            <span>/ Dashboard / Live Monitor</span>
+        <header className="h-20 border-b border-black/5 bg-white flex items-center justify-between px-4 sm:px-8 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-black/50">
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)} 
+              className="lg:hidden p-2 -ml-2 mr-1 text-black/70 hover:text-black hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+            >
+              <Menu size={20} />
+            </button>
+            <LayoutDashboard size={14} className="shrink-0" />
+            <span className="truncate">/ {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} / Live Monitor</span>
           </div>
           <div className="flex items-center gap-4">
             <input 
