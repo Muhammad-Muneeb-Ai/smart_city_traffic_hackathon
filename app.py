@@ -307,7 +307,7 @@ def main():
                     centroid_x = (x1 + x2) // 2
                     
                     # Associate tracking bounding box back to highest IoU detection to extract real confidence
-                    track_conf = 0.85 # High default fallback if missing
+                    track_conf = 0.0 # Strict default to 0.0 (no current-frame detection match) to prevent high confidence hallucinations
                     best_iou = 0.0
                     for det in detections:
                         det_box, det_conf, _ = det
@@ -399,10 +399,11 @@ def main():
                                             plate_text = perform_ocr(reader, plate_crop)
                                         else:
                                             plate_text = "Unknown"
+                                    else:
+                                        plate_text = "Unknown"
                                 else:
-                                    # Fallback: Try OCR on vehicle crop lower half (heuristic)
-                                    h_v = vehicle_crop.shape[0]
-                                    plate_text = perform_ocr(reader, vehicle_crop[h_v//2:, :])
+                                    # Fallback: To prevent farzi/dummy numbers and hallucinations on blurry/distant vehicles, return "Unknown"
+                                    plate_text = "Unknown"
                             else:
                                 plate_text = "Unknown (Distant)"
                             
@@ -438,18 +439,28 @@ def main():
                     active_alerts = 1 if current_avg_speed > 60.0 else 0
                     flow_status = "Heavy Traffic" if current_live_count > 5 else "Stable Flow"
                 
-                # Write to live_stats.json on EVERY frame
+                # Write to live_stats.json on EVERY frame and notify API
                 try:
                     import json
+                    import requests
+                    
+                    stats_payload = {
+                        "live_count": current_live_count,
+                        "cumulative_count": len(crossed_ids),
+                        "avg_speed": round(current_avg_speed, 1),
+                        "plates_detected": 0 if current_live_count == 0 else len(unique_plates),
+                        "active_alerts": active_alerts,
+                        "flow_status": flow_status
+                    }
+                    
                     with open("database/live_stats.json", "w") as f:
-                        json.dump({
-                            "live_count": current_live_count,
-                            "cumulative_count": len(crossed_ids),
-                            "avg_speed": round(current_avg_speed, 1),
-                            "plates_detected": len(unique_plates),
-                            "active_alerts": active_alerts,
-                            "flow_status": flow_status
-                        }, f)
+                        json.dump(stats_payload, f)
+                        
+                    # Real-time pipeline connector post to Flask API
+                    try:
+                        requests.post("http://127.0.0.1:5000/api/update-metrics", json=stats_payload, timeout=0.1)
+                    except Exception:
+                        pass
                 except Exception as ex:
                     pass
 

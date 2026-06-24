@@ -247,7 +247,7 @@ async function startServer() {
     try {
       // 1. Try to fetch from the Python Flask API running on port 5000
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300); // 300ms timeout
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2000ms timeout
 
       try {
         const response = await fetch("http://127.0.0.1:5000/api/stats", { signal: controller.signal });
@@ -289,7 +289,7 @@ async function startServer() {
   app.get("/api/traffic-metrics", async (req, res) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300); // 300ms timeout
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2000ms timeout
 
       try {
         const response = await fetch("http://127.0.0.1:5000/api/traffic-metrics", { signal: controller.signal });

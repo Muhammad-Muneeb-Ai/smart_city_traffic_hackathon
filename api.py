@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import sqlite3
 import os
 import json
@@ -19,12 +19,30 @@ plates_detected = 0
 avg_speed = 0.0
 active_alerts = 0
 flow_status = "No Traffic"
+last_update_time = 0.0
 
 def get_live_metrics():
     """Fetches or simulates dynamic traffic metrics in real-time, solving the freeze & empty road glitch."""
-    global live_count, plates_detected, avg_speed, active_alerts, flow_status
+    global live_count, plates_detected, avg_speed, active_alerts, flow_status, last_update_time
 
-    # 1. Try to read active video stream statistics from live_stats.json
+    # 1. Prioritize direct global variables if they've been updated in the last 30 seconds
+    if time.time() - last_update_time < 30:
+        # Zero Traffic Handling: If live_count == 0, reset everything to 0
+        if live_count == 0:
+            avg_speed = 0.0
+            active_alerts = 0
+            flow_status = "No Traffic"
+            plates_detected = 0
+            
+        return {
+            "live_count": live_count,
+            "avg_speed": round(avg_speed, 1),
+            "plates_detected": plates_detected,
+            "active_alerts": active_alerts,
+            "flow_status": flow_status
+        }
+
+    # 2. Try to read active video stream statistics from live_stats.json
     if os.path.exists(LIVE_STATS_JSON):
         try:
             mtime = os.path.getmtime(LIVE_STATS_JSON)
@@ -39,11 +57,12 @@ def get_live_metrics():
                 active_alerts = stats.get("active_alerts", 0)
                 flow_status = stats.get("flow_status", "Stable Flow")
                 
-                # Safe Conditional Handling (Empty Road)
+                # Zero Traffic Handling: If live_count == 0, reset everything to 0
                 if live_count == 0:
                     avg_speed = 0.0
                     active_alerts = 0
                     flow_status = "No Traffic"
+                    plates_detected = 0
                 
                 return {
                     "live_count": live_count,
@@ -55,7 +74,7 @@ def get_live_metrics():
         except Exception as e:
             print(f"Error reading live_stats.json: {e}")
 
-    # 2. SQLite Database fallback with natural, realistic real-time fluctuations
+    # 3. SQLite Database fallback with natural, realistic real-time fluctuations
     if os.path.exists(DB_PATH):
         try:
             conn = sqlite3.connect(DB_PATH)
@@ -87,10 +106,12 @@ def get_live_metrics():
                 active_alerts = 1 if avg_speed > 62.0 or random.random() < 0.1 else 0
                 flow_status = "Stable Flow" if live_count <= 4 else "Heavy Traffic"
                 
+                # Zero Traffic Handling: If live_count == 0, reset everything to 0
                 if live_count == 0:
                     avg_speed = 0.0
                     active_alerts = 0
                     flow_status = "No Traffic"
+                    db_plates = 0
                     
                 return {
                     "live_count": live_count,
@@ -102,7 +123,7 @@ def get_live_metrics():
         except Exception as e:
             print(f"Error querying SQLite fallback: {e}")
 
-    # 3. Dynamic Simulated Real-Time stream (Clean Slate Default)
+    # 4. Dynamic Simulated Real-Time stream (Clean Slate Default)
     # Fluctuates over time naturally so the dashboard is NEVER frozen/hardcoded!
     t = int(time.time())
     live_count = max(0, int(4 + 3 * np.sin(t / 12.0) + random.randint(-1, 1)))
@@ -110,14 +131,14 @@ def get_live_metrics():
     if live_count == 0:
         avg_speed = 0.0
         active_alerts = 0
-        flow_status = "Empty"
+        flow_status = "No Traffic"
+        plates_detected = 0
     else:
         avg_speed = round(48.5 + 4.2 * np.cos(t / 18.0) + random.uniform(-1.0, 1.0), 1)
         active_alerts = 1 if avg_speed > 52.0 and random.random() < 0.25 else 0
         flow_status = "Heavy Traffic" if live_count > 5 else "Stable Flow"
+        plates_detected = max(5, int(15 + (t % 360) // 12))
         
-    plates_detected = max(5, int(15 + (t % 360) // 12))
-    
     return {
         "live_count": live_count,
         "avg_speed": avg_speed,
@@ -125,6 +146,47 @@ def get_live_metrics():
         "active_alerts": active_alerts,
         "flow_status": flow_status
     }
+
+@app.route("/api/update-metrics", methods=["POST"])
+def update_metrics():
+    """Allows the tracking pipeline to post real-time updates directly to global variables."""
+    global live_count, plates_detected, avg_speed, active_alerts, flow_status, last_update_time
+    try:
+        data = request.json
+        if data:
+            live_count = data.get("live_count", 0)
+            plates_detected = data.get("plates_detected", 0)
+            avg_speed = data.get("avg_speed", 0.0)
+            active_alerts = data.get("active_alerts", 0)
+            flow_status = data.get("flow_status", "No Traffic")
+            last_update_time = time.time()
+            
+            # Zero Traffic Handling
+            if live_count == 0:
+                avg_speed = 0.0
+                active_alerts = 0
+                flow_status = "No Traffic"
+                plates_detected = 0
+
+            # Persist to live_stats.json for secondary syncing
+            try:
+                if not os.path.exists(DB_DIR):
+                    os.makedirs(DB_DIR)
+                with open(LIVE_STATS_JSON, "w") as f:
+                    json.dump({
+                        "live_count": live_count,
+                        "avg_speed": avg_speed,
+                        "plates_detected": plates_detected,
+                        "active_alerts": active_alerts,
+                        "flow_status": flow_status
+                    }, f)
+            except Exception as e:
+                pass
+                
+            return jsonify({"status": "success", "message": "Metrics updated successfully"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+    return jsonify({"status": "error", "message": "No data provided"}), 400
 
 @app.route("/api/stats", methods=["GET"])
 def stats_endpoint():
