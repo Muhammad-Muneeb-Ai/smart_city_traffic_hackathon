@@ -11,3 +11,4 @@ torchvision
 pillow
 pydantic
 plotly
+flask

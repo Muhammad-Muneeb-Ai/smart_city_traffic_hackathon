@@ -40,21 +40,28 @@ class Database:
                 vehicle_type TEXT NOT NULL,
                 plate_number TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                direction TEXT DEFAULT 'Inbound'
+                direction TEXT DEFAULT 'Inbound',
+                speed REAL DEFAULT 0.0
             )
         ''')
+        # Safe migration check: add speed column if existing database doesn't have it
+        try:
+            cursor.execute("ALTER TABLE vehicle_crossings ADD COLUMN speed REAL DEFAULT 0.0")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully.")
 
-    def insert_vehicle(self, vehicle_type: str, plate_number: str, direction: str = "Inbound"):
+    def insert_vehicle(self, vehicle_type: str, plate_number: str, direction: str = "Inbound", speed: float = 0.0):
         """Inserts a crossing record into the database."""
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO vehicle_crossings (vehicle_type, plate_number, direction, timestamp)
-            VALUES (?, ?, ?, ?)
-        ''', (vehicle_type, plate_number, direction, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            INSERT INTO vehicle_crossings (vehicle_type, plate_number, direction, speed, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (vehicle_type, plate_number, direction, speed, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         conn.close()
         return True
