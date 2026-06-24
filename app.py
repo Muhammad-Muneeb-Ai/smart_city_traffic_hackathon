@@ -87,19 +87,35 @@ def load_models():
     
     return vehicle_model, plate_model, tracker, reader
 
-def perform_ocr(reader, image_crop):
+def perform_ocr(reader, image_crop, ocr_conf_threshold=0.65):
+    import re
     try:
         results = reader.readtext(image_crop)
         if results:
             # Get text with highest confidence
             text = results[0][1]
             conf = results[0][2]
-            if conf > 0.5:
-                # Basic cleanup
-                return "".join(e for e in text if e.isalnum()).upper()
-    except:
+            
+            # 3. Strict OCR Validation: check confidence score
+            if conf >= ocr_conf_threshold:
+                # Standard cleanup (uppercase & alphanumeric only)
+                clean_text = "".join(e for e in text if e.isalnum()).upper()
+                
+                # Regex matching for Indian and USA plates
+                # Indian standard: 2 letters, 1-2 digits, 1-3 letters, 4 digits (e.g. MH12AB1234 or DL3CAA1111)
+                india_regex = r"^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$"
+                # USA standard: Alphanumeric characters 3 to 8 characters long
+                usa_regex = r"^[A-Z0-9]{3,8}$"
+                
+                if re.match(india_regex, clean_text) or re.match(usa_regex, clean_text):
+                    return clean_text
+                else:
+                    return "Unknown"
+            else:
+                return "Unknown"
+    except Exception as e:
         pass
-    return "NOT_DETECTED"
+    return "Unknown"
 
 # --- 4. Main Application ---
 def main():
@@ -274,21 +290,43 @@ def main():
                             # TRIGGER CROSSING
                             crossed_ids.add(track_id)
                             
-                            # Perform Plate Detection and OCR
-                            plate_text = "NOT_DETECTED"
-                            # Crop vehicle to look for plate
-                            vehicle_crop = frame[max(0, y1):min(height, y2), max(0, x1):min(width, x2)]
+                            # Perform Plate Detection and OCR with robust filters (Confidence + Resolution Checks)
+                            plate_text = "Unknown"
                             
-                            if plate_model:
-                                plate_results = plate_model(vehicle_crop, verbose=False)[0]
-                                if len(plate_results.boxes) > 0:
-                                    px1, py1, px2, py2 = map(int, plate_results.boxes[0].xyxy[0])
-                                    plate_crop = vehicle_crop[py1:py2, px1:px2]
-                                    plate_text = perform_ocr(reader, plate_crop)
+                            # 1. Bounding Box Size Filter (Resolution Check) on Vehicle
+                            vw_box = x2 - x1
+                            vh_box = y2 - y1
+                            
+                            if vw_box >= 80 and vh_box >= 80:
+                                # Crop vehicle to look for plate
+                                vehicle_crop = frame[max(0, y1):min(height, y2), max(0, x1):min(width, x2)]
+                                
+                                if plate_model:
+                                    plate_results = plate_model(vehicle_crop, verbose=False)[0]
+                                    if len(plate_results.boxes) > 0:
+                                        plate_box = plate_results.boxes[0]
+                                        plate_conf = float(plate_box.conf[0])
+                                        
+                                        # 2. Confidence Threshold Filter
+                                        if plate_conf >= 0.75:
+                                            px1, py1, px2, py2 = map(int, plate_box.xyxy[0])
+                                            pw = px2 - px1
+                                            ph = py2 - py1
+                                            
+                                            # 3. Bounding Box Size Filter (Resolution Check) on Plate
+                                            if pw >= 45 and ph >= 15:
+                                                plate_crop = vehicle_crop[py1:py2, px1:px2]
+                                                plate_text = perform_ocr(reader, plate_crop)
+                                            else:
+                                                plate_text = "Unknown (Too Small)"
+                                        else:
+                                            plate_text = "Unknown (Low Conf)"
+                                else:
+                                    # Fallback: Try OCR on vehicle crop lower half (heuristic)
+                                    h_v = vehicle_crop.shape[0]
+                                    plate_text = perform_ocr(reader, vehicle_crop[h_v//2:, :])
                             else:
-                                # Fallback: Try OCR on vehicle crop lower half (heuristic)
-                                h_v = vehicle_crop.shape[0]
-                                plate_text = perform_ocr(reader, vehicle_crop[h_v//2:, :])
+                                plate_text = "Unknown (Distant)"
                             
                             db.insert_vehicle(cls_name, plate_text)
                             update_ui()
