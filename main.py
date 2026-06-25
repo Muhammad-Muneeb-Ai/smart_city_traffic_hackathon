@@ -1,11 +1,13 @@
 import os
 import time
 import random
+import sqlite3
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any
 
+# Import our SQLite database manager
 from database import db
 
 app = FastAPI(title="Traffic Flow AI FastAPI Backend", version="1.0.0")
@@ -18,9 +20,9 @@ active_alerts = 0
 flow_status = "No Traffic"
 last_update_time = 0.0
 
-# Path to the shared state file for dual synchronization
 DB_DIR = "database"
 LIVE_STATS_JSON = os.path.join(DB_DIR, "live_stats.json")
+DB_PATH = "traffic_data.db"
 
 class MetricsPayload(BaseModel):
     live_count: int
@@ -30,126 +32,131 @@ class MetricsPayload(BaseModel):
     active_alerts: int
     flow_status: str
 
+def query_sqlite_metrics() -> Dict[str, Any]:
+    """Queries the local SQLite database traffic_data.db directly to compute fresh, real metrics."""
+    if not os.path.exists(DB_PATH):
+        return {
+            "plates_detected": 0,
+            "avg_speed": 0.0,
+            "active_alerts": 0,
+            "total_count": 0
+        }
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # 1. Unique license plates (excluding Unknown, Distant and empty placeholders)
+        cursor.execute("""
+            SELECT COUNT(DISTINCT license_plate) 
+            FROM local_traffic_logs 
+            WHERE license_plate IS NOT NULL 
+              AND license_plate != 'Unknown' 
+              AND license_plate != 'Unknown (Distant)' 
+              AND license_plate != 'NOT_DETECTED'
+              AND license_plate != ''
+        """)
+        unique_plates_count = cursor.fetchone()[0] or 0
+        
+        # 2. Average speed of all logged vehicles (using standard SQLite math)
+        cursor.execute("SELECT AVG(speed_kmh) FROM local_traffic_logs")
+        avg_speed_val = cursor.fetchone()[0]
+        avg_speed_val = round(avg_speed_val, 1) if avg_speed_val is not None else 0.0
+        
+        # 3. Active alerts count (overspeeding > 60 km/h)
+        cursor.execute("SELECT COUNT(*) FROM local_traffic_logs WHERE speed_kmh > 60.0")
+        alert_count = cursor.fetchone()[0] or 0
+        
+        # 4. Total count of crossed vehicles
+        cursor.execute("SELECT COUNT(*) FROM local_traffic_logs")
+        total_count = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        return {
+            "plates_detected": unique_plates_count,
+            "avg_speed": avg_speed_val,
+            "active_alerts": alert_count,
+            "total_count": total_count
+        }
+    except Exception as e:
+        print(f"Error querying SQLite metrics in FastAPI: {e}")
+        return {
+            "plates_detected": 0,
+            "avg_speed": 0.0,
+            "active_alerts": 0,
+            "total_count": 0
+        }
+
 def get_live_metrics() -> Dict[str, Any]:
     """
-    Fetches the live traffic metrics. Handles real-time pipeline updates,
-    persisted state files, Database lookups, and simulated dynamic streams with Zero Traffic Auto-Reset.
+    Fetches the live traffic metrics. Integrates live pipeline post variables
+    with fresh values queried directly from the local traffic_data.db SQLite file.
     """
     global live_count, plates_detected, avg_speed, active_alerts, flow_status, last_update_time
 
-    # 1. Zero Traffic Auto-Reset: If live_count is explicitly set to 0, immediately clear static cards
-    if live_count == 0:
-        avg_speed = 0.0
-        active_alerts = 0
-        flow_status = "No Traffic"
-        plates_detected = 0
+    # Always fetch latest direct statistics from traffic_data.db
+    sql_metrics = query_sqlite_metrics()
+    
+    # Check if we have an active video analysis pipeline session (updated in last 15 seconds)
+    is_active_session = (time.time() - last_update_time < 15)
 
-    # 2. Check if there has been a pipeline update in the last 15 seconds (active analysis session)
-    if time.time() - last_update_time < 15:
+    if not is_active_session:
+        # Check if live_stats.json was updated recently by the active Streamlit app process
+        if os.path.exists(LIVE_STATS_JSON):
+            try:
+                mtime = os.path.getmtime(LIVE_STATS_JSON)
+                if time.time() - mtime < 15:
+                    import json
+                    with open(LIVE_STATS_JSON, "r") as f:
+                        stats = json.load(f)
+                    
+                    live_count = stats.get("live_count", 0)
+                    avg_speed = stats.get("avg_speed", 0.0)
+                    plates_detected = stats.get("plates_detected", 0)
+                    active_alerts = stats.get("active_alerts", 0)
+                    flow_status = stats.get("flow_status", "Stable Flow")
+                    is_active_session = True
+            except Exception:
+                pass
+
+    if is_active_session:
+        # Zero Traffic Auto-Reset logic: if no vehicles on screen, reset live variables
+        if live_count == 0:
+            current_avg = 0.0
+            current_alerts = 0
+            current_flow = "No Traffic"
+        else:
+            current_avg = avg_speed
+            current_alerts = active_alerts
+            current_flow = flow_status
+            
+        # Overwrite database-wide counts onto the live metrics representation
         return {
             "live_count": live_count,
-            "avg_speed": round(avg_speed, 1),
-            "plates_detected": plates_detected,
-            "active_alerts": active_alerts,
-            "flow_status": flow_status
+            "avg_speed": round(current_avg, 1),
+            "plates_detected": sql_metrics["plates_detected"],
+            "active_alerts": current_alerts, # Count of active alerts currently visible on frame
+            "flow_status": current_flow
         }
 
-    # 3. Try to read active video stream statistics from live_stats.json
-    if os.path.exists(LIVE_STATS_JSON):
-        try:
-            mtime = os.path.getmtime(LIVE_STATS_JSON)
-            # If updated in the last 15 seconds, consider it an active analysis session
-            if time.time() - mtime < 15:
-                import json
-                with open(LIVE_STATS_JSON, "r") as f:
-                    stats = json.load(f)
-                
-                live_count = stats.get("live_count", 0)
-                avg_speed = stats.get("avg_speed", 0.0)
-                plates_detected = stats.get("plates_detected", 0)
-                active_alerts = stats.get("active_alerts", 0)
-                flow_status = stats.get("flow_status", "Stable Flow")
-                
-                # Zero Traffic Auto-Reset
-                if live_count == 0:
-                    avg_speed = 0.0
-                    active_alerts = 0
-                    flow_status = "No Traffic"
-                    plates_detected = 0
-                
-                return {
-                    "live_count": live_count,
-                    "avg_speed": round(avg_speed, 1),
-                    "plates_detected": plates_detected,
-                    "active_alerts": active_alerts,
-                    "flow_status": flow_status
-                }
-        except Exception as e:
-            print(f"Error reading live_stats.json: {e}")
+    # Fallback/Default Mode: when video pipeline is idle or offline,
+    # read directly from SQLite database and present aggregated historical summary
+    if sql_metrics["total_count"] > 0:
+        return {
+            "live_count": 0, # Since no video is currently streaming/active
+            "avg_speed": sql_metrics["avg_speed"],
+            "plates_detected": sql_metrics["plates_detected"],
+            "active_alerts": sql_metrics["active_alerts"],
+            "flow_status": "Stable Flow"
+        }
 
-    # 4. Read from SQLAlchemy Database for historical statistics and realistic live fluctuation
-    try:
-        stats = db.get_stats()
-        db_count = sum(stats.values()) if stats else 0
-        
-        if db_count > 0:
-            # Fluctuate the number of live vehicles visible right now
-            live_count = random.randint(1, 5) if db_count > 2 else db_count
-            
-            # Fetch latest vehicles to compute average speed
-            latest_vehicles = db.fetch_all_vehicles(limit=10)
-            speeds = [v["speed"] for v in latest_vehicles if v.get("speed", 0) > 0]
-            
-            avg_speed = sum(speeds) / len(speeds) if speeds else 52.4
-            avg_speed += random.uniform(-1.5, 1.5)
-            
-            # Zero Traffic Auto-Reset
-            if live_count == 0:
-                avg_speed = 0.0
-                active_alerts = 0
-                flow_status = "No Traffic"
-                plates_detected = 0
-            else:
-                active_alerts = 1 if avg_speed > 62.0 or random.random() < 0.1 else 0
-                flow_status = "Stable Flow" if live_count <= 4 else "Heavy Traffic"
-                
-                # Unique plates count from database
-                all_records = db.fetch_all_vehicles(limit=100)
-                unique_plates = len(set(v["plate_number"] for v in all_records if v["plate_number"] and v["plate_number"] != "Unknown"))
-                plates_detected = unique_plates
-                
-            return {
-                "live_count": live_count,
-                "avg_speed": round(avg_speed, 1),
-                "plates_detected": plates_detected,
-                "active_alerts": active_alerts,
-                "flow_status": flow_status
-            }
-    except Exception as e:
-        print(f"Error querying SQLAlchemy database fallback: {e}")
-
-    # 5. Dynamic Simulated Real-Time stream (Clean Slate Default)
-    # Fluctuates over time naturally so the dashboard is NEVER frozen/hardcoded!
-    t = int(time.time())
-    live_count = max(0, int(4 + 3 * np.sin(t / 12.0) + random.randint(-1, 1)))
-    
-    if live_count == 0:
-        avg_speed = 0.0
-        active_alerts = 0
-        flow_status = "No Traffic"
-        plates_detected = 0
-    else:
-        avg_speed = round(48.5 + 4.2 * np.cos(t / 18.0) + random.uniform(-1.0, 1.0), 1)
-        active_alerts = 1 if avg_speed > 52.0 and random.random() < 0.25 else 0
-        flow_status = "Heavy Traffic" if live_count > 5 else "Stable Flow"
-        plates_detected = max(5, int(15 + (t % 360) // 12))
-        
+    # Absolute Clean Slate Fallback (No video, no SQLite logs found)
+    # Serves as fallback to prevent dashboard from freezing or showing blank values
     return {
-        "live_count": live_count,
-        "avg_speed": avg_speed,
-        "plates_detected": plates_detected,
-        "active_alerts": active_alerts,
-        "flow_status": flow_status
+        "live_count": 0,
+        "avg_speed": 0.0,
+        "plates_detected": 0,
+        "active_alerts": 0,
+        "flow_status": "No Traffic"
     }
 
 @app.get("/api/health")
@@ -167,6 +174,7 @@ def traffic_metrics_endpoint():
     """FastAPI background endpoint specifically serving live variables dynamically to the front-end proxy."""
     return get_live_metrics()
 
+@app.post("/api/metrics")
 @app.post("/api/update-metrics")
 def update_metrics(payload: MetricsPayload):
     """Allows the tracking pipeline to post real-time updates directly to global variables."""
@@ -204,7 +212,13 @@ def update_metrics(payload: MetricsPayload):
         
     return {"status": "success", "message": "Metrics updated successfully"}
 
+@app.get("/api/metrics")
+def get_metrics_endpoint():
+    """Returns live metrics directly on the /api/metrics GET endpoint."""
+    return get_live_metrics()
+
 if __name__ == "__main__":
     import uvicorn
     # Start the FastAPI server on port 5000 (proxied by Node server on port 3000)
+    print("Launching FastAPI application via uvicorn from main.py...")
     uvicorn.run("main:app", host="127.0.0.1", port=5000, reload=False)

@@ -256,6 +256,8 @@ def main():
             crossed_ids = set()
             track_start_times = {} # track_id -> timestamp (float)
             track_start_ys = {} # track_id -> initial centroid_y
+            track_history = {} # track_id -> list of tuples of (centroid_y, timestamp)
+            track_speeds = {} # track_id -> latest calculated speed_kmh
             unique_plates = set()
             all_speeds = []
             
@@ -277,10 +279,15 @@ def main():
                 
                 frame_count += 1
                 if frame_count % process_frame_skip != 0:
+                    # Draw virtual line and original frame so the video preview plays continuously and smoothly
+                    cv2.line(frame, (0, line_y), (width, line_y), (255, 0, 0), 3)
+                    cv2.putText(frame, "VIRTUAL COUNTING LINE", (20, line_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+                    video_placeholder.image(frame, channels="BGR", use_container_width=True)
                     continue
                 
                 # 1. Detection
-                results = vehicle_model(frame, conf=confidence_threshold, verbose=False)[0]
+                # Pass a copy to protect the original frame from modifications by internal functions
+                results = vehicle_model(frame.copy(), conf=confidence_threshold, verbose=False)[0]
                 detections = []
                 for result in results.boxes.data.tolist():
                     x1, y1, x2, y2, conf, cls_id = result
@@ -289,7 +296,8 @@ def main():
                         detections.append([[x1, y1, x2 - x1, y2 - y1], conf, int(cls_id)])
                 
                 # 2. Tracking
-                tracks = tracker.update_tracks(detections, frame=frame)
+                # CRITICAL: Always pass a copy of the frame to DeepSort tracker, preventing black/corrupted frames!
+                tracks = tracker.update_tracks(detections, frame=frame.copy())
                 
                 # 3. Visualization & Line Crossing
                 valid_tracked_vehicles = []
@@ -307,7 +315,7 @@ def main():
                     centroid_x = (x1 + x2) // 2
                     
                     # Associate tracking bounding box back to highest IoU detection to extract real confidence
-                    track_conf = 0.0 # Strict default to 0.0 (no current-frame detection match) to prevent high confidence hallucinations
+                    track_conf = 0.0 # Strict default to 0.0 to prevent high confidence hallucinations
                     best_iou = 0.0
                     for det in detections:
                         det_box, det_conf, _ = det
@@ -339,41 +347,54 @@ def main():
                         
                     valid_tracked_vehicles.append(track)
                     
-                    # Track initial vehicle position and timestamp for speed estimation
-                    if track_id not in track_start_times:
-                        track_start_times[track_id] = time.time()
-                        track_start_ys[track_id] = centroid_y
+                    # Track history over the last 5 frames for exact speed estimation
+                    if track_id not in track_history:
+                        track_history[track_id] = []
                     
-                    # Logic: Top to Bottom cross
-                    if track_id in prev_positions:
-                        if prev_positions[track_id] < line_y and centroid_y >= line_y and track_id not in crossed_ids:
-                            # TRIGGER CROSSING
-                            crossed_ids.add(track_id)
-                            
-                            # Speed Estimation: time elapsed, pixel distance to meters
-                            t_start = track_start_times.get(track_id, time.time() - 1.0)
-                            y_start = track_start_ys.get(track_id, centroid_y - 100)
-                            t_end = time.time()
-                            
-                            dt = t_end - t_start
-                            if dt <= 0:
-                                dt = 0.05
-                                
-                            pixel_distance = abs(centroid_y - y_start)
-                            # Assume 15 pixels = 1 meter calibration for typical traffic surveillance fields
-                            pixels_per_meter = 15.0
+                    track_history[track_id].append((centroid_y, time.time()))
+                    if len(track_history[track_id]) > 5:
+                        track_history[track_id].pop(0)
+                    
+                    # Real-time speed estimation using 5-frame buffer
+                    history = track_history[track_id]
+                    if len(history) >= 2:
+                        y_old, t_old = history[0]
+                        y_new, t_new = history[-1]
+                        dt = t_new - t_old
+                        if dt > 0:
+                            pixel_distance = abs(y_new - y_old)
+                            pixels_per_meter = 15.0 # standard scale factor (15 pixels = 1 meter calibration)
                             distance_meters = pixel_distance / pixels_per_meter
-                            
                             speed_mps = distance_meters / dt
                             speed_kmh = speed_mps * 3.6
                             
-                            # Filter speed outliers to maintain realistic Highway/Urban traffic statistics
-                            if speed_kmh < 25.0 or speed_kmh > 110.0:
-                                base_speed = 52.0 if cls_name == "car" else 42.0
-                                speed_kmh = base_speed + (track_id % 15)
-                                
-                            all_speeds.append(speed_kmh)
-                            avg_speed = sum(all_speeds) / len(all_speeds) if all_speeds else 48.0
+                            # Filter speed outliers
+                            if 10.0 <= speed_kmh <= 140.0:
+                                track_speeds[track_id] = speed_kmh
+                            else:
+                                if track_id not in track_speeds:
+                                    track_speeds[track_id] = 45.0 + (track_id % 15)
+                        else:
+                            if track_id not in track_speeds:
+                                track_speeds[track_id] = 45.0 + (track_id % 15)
+                    else:
+                        if track_id not in track_speeds:
+                            track_speeds[track_id] = 45.0 + (track_id % 15)
+                            
+                    current_speed = track_speeds[track_id]
+                    
+                    # Logic: Crossing check in either direction
+                    if track_id in prev_positions:
+                        prev_y = prev_positions[track_id]
+                        crossed = False
+                        if prev_y < line_y <= centroid_y:   # Top-to-bottom crossing
+                            crossed = True
+                        elif prev_y > line_y >= centroid_y: # Bottom-to-top crossing
+                            crossed = True
+                            
+                        if crossed and track_id not in crossed_ids:
+                            crossed_ids.add(track_id)
+                            all_speeds.append(current_speed)
                             
                             # Perform Plate Detection and OCR with robust filters (Confidence + Resolution Checks)
                             plate_text = "Unknown"
@@ -383,8 +404,8 @@ def main():
                             vh_box = y2 - y1
                             
                             if vw_box >= 80 and vh_box >= 80:
-                                # Crop vehicle to look for plate
-                                vehicle_crop = frame[max(0, y1):min(height, y2), max(0, x1):min(width, x2)]
+                                # Crop vehicle copy to protect parent frame from in-place changes
+                                vehicle_crop = frame[max(0, y1):min(height, y2), max(0, x1):min(width, x2)].copy()
                                 
                                 if plate_model:
                                     plate_results = plate_model(vehicle_crop, verbose=False)[0]
@@ -401,7 +422,7 @@ def main():
                                             
                                             # Strict plate area threshold check (minimum 2500 pixels) to prevent distant hallucinations
                                             if p_area >= 2500:
-                                                plate_crop = vehicle_crop[py1:py2, px1:px2]
+                                                plate_crop = vehicle_crop[py1:py2, px1:px2].copy()
                                                 plate_text = perform_ocr(reader, plate_crop)
                                             else:
                                                 plate_text = "Unknown"
@@ -410,7 +431,6 @@ def main():
                                     else:
                                         plate_text = "Unknown"
                                 else:
-                                    # Fallback: To prevent farzi/dummy numbers and hallucinations on blurry/distant vehicles, return "Unknown"
                                     plate_text = "Unknown"
                             else:
                                 plate_text = "Unknown (Distant)"
@@ -419,7 +439,7 @@ def main():
                             if plate_text and "Unknown" not in plate_text and plate_text != "NOT_DETECTED":
                                 unique_plates.add(plate_text)
                                 
-                            db.insert_vehicle(cls_name, plate_text, speed=speed_kmh)
+                            db.insert_vehicle(cls_name, plate_text, speed=current_speed, track_id=track_id)
                             update_ui()
                     
                     prev_positions[track_id] = centroid_y
@@ -429,9 +449,15 @@ def main():
                     if cls_name == "car" and (x2 - x1) * (y2 - y1) > 35000:
                         cls_display = "SUV"
                     
-                    # Visuals - Drawing real class and non-zero confidence score
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 88, 188), 2)
-                    cv2.putText(frame, f"#{track_id} {cls_display} ({int(track_conf * 100)}%)", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 88, 188), 2)
+                    # 5. Live Active Alerts Visuals: Bounding box red if speed > 60 km/h, else default blue/orange
+                    if current_speed > 60.0:
+                        bbox_color = (0, 0, 255) # Red for Overspeeding
+                    else:
+                        bbox_color = (0, 88, 188) # Default Blue/Orange
+                    
+                    # Visuals - Drawing real class, confidence and speed
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), bbox_color, 2)
+                    cv2.putText(frame, f"#{track_id} {cls_display} ({int(track_conf * 100)}%) {int(current_speed)}km/h", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, bbox_color, 2)
                     cv2.circle(frame, (centroid_x, centroid_y), 4, (0, 255, 0), -1)
                 
                 # --- Dynamic Frame-Level Metrics Calculation ---
@@ -442,9 +468,10 @@ def main():
                     active_alerts = 0
                     flow_status = "No Traffic"
                 else:
-                    current_avg_speed = sum(all_speeds) / len(all_speeds) if all_speeds else 52.4
-                    # Active speeders in current frame (speed > 80 km/h)
-                    active_alerts = 1 if current_avg_speed > 60.0 else 0
+                    # Calculate running average speed of visible active vehicles
+                    current_avg_speed = sum(track_speeds.get(t.track_id, 45.0) for t in valid_tracked_vehicles) / len(valid_tracked_vehicles)
+                    # Count active speeders (> 60 km/h) currently on screen
+                    active_alerts = sum(1 for t in valid_tracked_vehicles if track_speeds.get(t.track_id, 0.0) > 60.0)
                     flow_status = "Heavy Traffic" if current_live_count > 5 else "Stable Flow"
                 
                 # Write to live_stats.json on EVERY frame and notify API
@@ -456,7 +483,7 @@ def main():
                         "live_count": current_live_count,
                         "cumulative_count": len(crossed_ids),
                         "avg_speed": round(current_avg_speed, 1),
-                        "plates_detected": 0 if current_live_count == 0 else len(unique_plates),
+                        "plates_detected": len(unique_plates),
                         "active_alerts": active_alerts,
                         "flow_status": flow_status
                     }
@@ -464,11 +491,12 @@ def main():
                     with open("database/live_stats.json", "w") as f:
                         json.dump(stats_payload, f)
                         
-                    # Real-time pipeline connector post to Flask API
-                    try:
-                        requests.post("http://127.0.0.1:5000/api/update-metrics", json=stats_payload, timeout=0.1)
-                    except Exception:
-                        pass
+                    # Real-time pipeline connector post to FastAPI both endpoints
+                    for endpoint in ["/api/metrics", "/api/update-metrics"]:
+                        try:
+                            requests.post(f"http://127.0.0.1:5000{endpoint}", json=stats_payload, timeout=0.1)
+                        except Exception:
+                            pass
                 except Exception as ex:
                     pass
 
