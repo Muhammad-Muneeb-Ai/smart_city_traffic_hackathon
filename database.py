@@ -7,13 +7,16 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("TRAFFIC_DB")
 
+# Get absolute path to the directory containing database.py
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(PROJECT_DIR, "traffic_data.db")
+
 def init_local_db():
     """
     Automatically creates a local database file named traffic_data.db
     inside the project folder if it doesn't exist.
     """
-    db_path = "traffic_data.db"
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(DB_PATH)
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -27,7 +30,7 @@ def init_local_db():
             )
         """)
         conn.commit()
-        logger.info("Local SQLite database traffic_data.db initialized successfully with local_traffic_logs table.")
+        logger.info(f"Local SQLite database {DB_PATH} initialized successfully with local_traffic_logs table.")
     except Exception as e:
         logger.error(f"Error creating local SQLite database schema: {e}")
     finally:
@@ -44,8 +47,7 @@ class Database:
 
     def insert_vehicle(self, vehicle_type: str, plate_number: str, direction: str = "Inbound", speed: float = 0.0, track_id: int = 0):
         """Inserts a crossing record into the local_traffic_logs table."""
-        db_path = "traffic_data.db"
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(DB_PATH)
         try:
             cursor = conn.cursor()
             license_plate = plate_number if plate_number else "Unknown"
@@ -65,8 +67,7 @@ class Database:
 
     def fetch_all_vehicles(self, limit: int = 100):
         """Fetches the latest vehicle records."""
-        db_path = "traffic_data.db"
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(DB_PATH)
         try:
             cursor = conn.cursor()
             cursor.execute("""
@@ -95,8 +96,7 @@ class Database:
 
     def get_stats(self):
         """Returns counts grouped by vehicle type."""
-        db_path = "traffic_data.db"
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(DB_PATH)
         try:
             cursor = conn.cursor()
             cursor.execute("""

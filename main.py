@@ -20,9 +20,9 @@ active_alerts = 0
 flow_status = "No Traffic"
 last_update_time = 0.0
 
-DB_DIR = "database"
-LIVE_STATS_JSON = os.path.join(DB_DIR, "live_stats.json")
-DB_PATH = "traffic_data.db"
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+LIVE_STATS_JSON = os.path.join(PROJECT_DIR, "database", "live_stats.json")
+from database import DB_PATH
 
 class MetricsPayload(BaseModel):
     live_count: int
@@ -196,8 +196,9 @@ def update_metrics(payload: MetricsPayload):
 
     # Persist to live_stats.json for secondary syncing
     try:
-        if not os.path.exists(DB_DIR):
-            os.makedirs(DB_DIR)
+        db_dir = os.path.dirname(LIVE_STATS_JSON)
+        if not os.path.exists(db_dir):
+            os.makedirs(db_dir)
         import json
         with open(LIVE_STATS_JSON, "w") as f:
             json.dump({

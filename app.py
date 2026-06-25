@@ -488,7 +488,12 @@ def main():
                         "flow_status": flow_status
                     }
                     
-                    with open("database/live_stats.json", "w") as f:
+                    project_dir = os.path.dirname(os.path.abspath(__file__))
+                    db_dir = os.path.join(project_dir, "database")
+                    os.makedirs(db_dir, exist_ok=True)
+                    live_stats_path = os.path.join(db_dir, "live_stats.json")
+                    
+                    with open(live_stats_path, "w") as f:
                         json.dump(stats_payload, f)
                         
                     # Real-time pipeline connector post to FastAPI both endpoints

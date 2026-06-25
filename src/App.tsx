@@ -324,9 +324,9 @@ const App = () => {
             {/* KPI Cards */}
             <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <StatCard icon={<Eye className="text-blue-500" />} label="Live Count" value={liveStats.live_count.toLocaleString()} subValue={liveStats.live_count === 0 ? "Empty Road" : "Active Flow"} />
-              <StatCard icon={<Car className="text-green-500" />} label="Avg Speed" value={`${liveStats.live_count === 0 ? 0 : liveStats.avg_speed} km/h`} subValue={liveStats.live_count === 0 ? "No Traffic" : `Flow: ${liveStats.flow_status || "Stable"}`} />
-              <StatCard icon={<Database className="text-purple-500" />} label="Plates Detected" value={liveStats.plates_detected.toString()} subValue={liveStats.live_count === 0 ? "OCR Standby" : "OCR Engine Scanning"} />
-              <StatCard icon={<AlertTriangle className="text-orange-500" />} label="Active Alerts" value={liveStats.live_count === 0 ? "0" : liveStats.active_alerts.toString()} subValue={liveStats.active_alerts > 0 ? "Speeding Detected" : "Low Intensity"} />
+              <StatCard icon={<Car className="text-green-500" />} label="Avg Speed" value={`${liveStats.avg_speed} km/h`} subValue={liveStats.live_count === 0 ? "No Active Vehicles" : `Flow: ${liveStats.flow_status || "Stable"}`} />
+              <StatCard icon={<Database className="text-purple-500" />} label="Plates Detected" value={liveStats.plates_detected.toString()} subValue={liveStats.plates_detected > 0 ? "Unique Plates Logged" : "OCR Standby"} />
+              <StatCard icon={<AlertTriangle className="text-orange-500" />} label="Active Alerts" value={liveStats.active_alerts.toString()} subValue={liveStats.active_alerts > 0 ? "Overspeeding Detected" : "No Active Alerts"} />
             </section>
 
             {/* Video & Controls Area */}
@@ -448,8 +448,8 @@ const App = () => {
                     <Activity size={16} />
                     Vehicle Flow History
                   </h3>
-                  <div className="flex-grow h-[200px]">
-                    <ResponsiveContainer width="100%" height="100%">
+                  <div className="flex-grow" style={{ width: '100%', height: 300, minWidth: 0 }}>
+                    <ResponsiveContainer width="100%" height={300}>
                       <AreaChart data={MOCK_STATS}>
                         <defs>
                           <linearGradient id="colorVeh" x1="0" y1="0" x2="0" y2="1">
@@ -729,8 +729,8 @@ const AnalyticsView = ({ stats }: any) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
       <div className="glass-card p-8">
         <h3 className="text-lg font-bold mb-6">Peak Traffic Hours</h3>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <div style={{ width: '100%', height: 300, minWidth: 0 }}>
+          <ResponsiveContainer width="100%" height={300}>
             <BarChart data={stats}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#14141408" />
               <XAxis dataKey="time" />
@@ -743,8 +743,8 @@ const AnalyticsView = ({ stats }: any) => (
       </div>
       <div className="glass-card p-8">
         <h3 className="text-lg font-bold mb-6">Traffic Intensity (Real-time)</h3>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <div style={{ width: '100%', height: 300, minWidth: 0 }}>
+          <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={stats}>
               <XAxis dataKey="time" />
               <YAxis hide />
