@@ -280,12 +280,12 @@ def main():
                     continue
                 
                 # 1. Detection
-                results = vehicle_model(frame, conf=0.50, verbose=False)[0]
+                results = vehicle_model(frame, conf=confidence_threshold, verbose=False)[0]
                 detections = []
                 for result in results.boxes.data.tolist():
                     x1, y1, x2, y2, conf, cls_id = result
-                    # STRICT CLASS CONFIDENCE THRESHOLD: NEVER allow low confidence vehicle detections (< 50%)
-                    if conf >= 0.50 and int(cls_id) in [2, 3, 5, 7]:
+                    # STRICT CLASS CONFIDENCE THRESHOLD: NEVER allow low confidence vehicle detections (< threshold)
+                    if conf >= confidence_threshold and int(cls_id) in [2, 3, 5, 7]:
                         detections.append([[x1, y1, x2 - x1, y2 - y1], conf, int(cls_id)])
                 
                 # 2. Tracking
@@ -330,11 +330,11 @@ def main():
                         if union > 0:
                             iou = intersection / union
                             if iou > best_iou:
-                                best_iou = iou
-                                track_conf = det_conf
+                                    best_iou = iou
+                                    track_conf = det_conf
                     
-                    # STRICT CLASS CONFIDENCE THRESHOLD: Delete tracks with confidence below 50%
-                    if track_conf < 0.50:
+                    # STRICT CLASS CONFIDENCE THRESHOLD: Delete tracks with confidence below user-set threshold (default 0.60)
+                    if track_conf < confidence_threshold:
                         continue
                         
                     valid_tracked_vehicles.append(track)
@@ -395,8 +395,16 @@ def main():
                                         # 2. Confidence Threshold Filter
                                         if plate_conf >= 0.75:
                                             px1, py1, px2, py2 = map(int, plate_box.xyxy[0])
-                                            plate_crop = vehicle_crop[py1:py2, px1:px2]
-                                            plate_text = perform_ocr(reader, plate_crop)
+                                            pw = px2 - px1
+                                            ph = py2 - py1
+                                            p_area = pw * ph
+                                            
+                                            # Strict plate area threshold check (minimum 2500 pixels) to prevent distant hallucinations
+                                            if p_area >= 2500:
+                                                plate_crop = vehicle_crop[py1:py2, px1:px2]
+                                                plate_text = perform_ocr(reader, plate_crop)
+                                            else:
+                                                plate_text = "Unknown"
                                         else:
                                             plate_text = "Unknown"
                                     else:

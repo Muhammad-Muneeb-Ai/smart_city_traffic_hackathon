@@ -12,3 +12,8 @@ pillow
 pydantic
 plotly
 flask
+SQLAlchemy
+pymysql
+psycopg2-binary
+fastapi
+uvicorn
