@@ -7,14 +7,115 @@ import { GoogleGenAI, Type } from "@google/genai";
 let aiClient: GoogleGenAI | null = null;
 
 function startBackendAPI() {
-  console.log("Starting Python Flask API server (api.py)...");
+  console.log("Checking Python environment for uvicorn and fastapi...");
+  const check = spawn("python3", ["-c", "import uvicorn, fastapi"], { stdio: "ignore" });
+  
+  check.on("close", async (code) => {
+    if (code !== 0) {
+      console.log("uvicorn or fastapi not found. Finding an available pip installer...");
+      
+      const runCommand = (cmd: string, args: string[]) => {
+        return new Promise<{ code: number; output: string }>((resolve) => {
+          const child = spawn(cmd, args);
+          let logData = "";
+          child.stdout?.on("data", (data) => { logData += data.toString(); });
+          child.stderr?.on("data", (data) => { logData += data.toString(); });
+          
+          child.on("close", (childCode) => {
+            resolve({ code: childCode || 0, output: logData });
+          });
+        });
+      };
+
+      // Find which pip command works
+      let pipCmd = "";
+      let pipArgs: string[] = [];
+      let diagLog = "--- Pip Autodetect Log ---\n";
+
+      const check1 = await runCommand("python3", ["-m", "pip", "--version"]);
+      diagLog += `python3 -m pip check: code ${check1.code}, output: ${check1.output.trim()}\n`;
+      if (check1.code === 0) {
+        pipCmd = "python3";
+        pipArgs = ["-m", "pip"];
+      }
+
+      if (!pipCmd) {
+        const check2 = await runCommand("pip3", ["--version"]);
+        diagLog += `pip3 check: code ${check2.code}, output: ${check2.output.trim()}\n`;
+        if (check2.code === 0) {
+          pipCmd = "pip3";
+          pipArgs = [];
+        }
+      }
+
+      if (!pipCmd) {
+        const check3 = await runCommand("pip", ["--version"]);
+        diagLog += `pip check: code ${check3.code}, output: ${check3.output.trim()}\n`;
+        if (check3.code === 0) {
+          pipCmd = "pip";
+          pipArgs = [];
+        }
+      }
+
+      if (!pipCmd) {
+        const check4 = await runCommand("python", ["-m", "pip", "--version"]);
+        diagLog += `python -m pip check: code ${check4.code}, output: ${check4.output.trim()}\n`;
+        if (check4.code === 0) {
+          pipCmd = "python";
+          pipArgs = ["-m", "pip"];
+        }
+      }
+
+      if (!pipCmd) {
+        diagLog += "ERROR: No pip command found in the system!\n";
+        await fs.writeFile(path.join(process.cwd(), "pip_install.log"), diagLog, "utf-8");
+        console.error("No pip command found in system. Unable to install Python requirements.");
+        launchAPI();
+        return;
+      }
+
+      diagLog += `Selected pip command: ${pipCmd} ${pipArgs.join(" ")}\n\n`;
+
+      // Try regular install first
+      console.log(`Installing requirements using: ${pipCmd} ${pipArgs.concat(["install", "-r", "requirements.txt"]).join(" ")}`);
+      const install1 = await runCommand(pipCmd, [...pipArgs, "install", "-r", "requirements.txt"]);
+      diagLog += `--- Install Attempt 1 ---\nCode: ${install1.code}\nOutput:\n${install1.output}\n\n`;
+      
+      let success = (install1.code === 0);
+
+      if (!success) {
+        console.log("Standard pip install failed. Trying with --break-system-packages...");
+        const install2 = await runCommand(pipCmd, [...pipArgs, "install", "-r", "requirements.txt", "--break-system-packages"]);
+        diagLog += `--- Install Attempt 2 (--break-system-packages) ---\nCode: ${install2.code}\nOutput:\n${install2.output}\n\n`;
+        success = (install2.code === 0);
+      }
+      
+      if (!success) {
+        console.log("Trying with --user --break-system-packages...");
+        const install3 = await runCommand(pipCmd, [...pipArgs, "install", "--user", "-r", "requirements.txt", "--break-system-packages"]);
+        diagLog += `--- Install Attempt 3 (--user --break-system-packages) ---\nCode: ${install3.code}\nOutput:\n${install3.output}\n\n`;
+        success = (install3.code === 0);
+      }
+
+      await fs.writeFile(path.join(process.cwd(), "pip_install.log"), diagLog, "utf-8");
+      console.log(`Pip installation finished. Log written to pip_install.log.`);
+      launchAPI();
+    } else {
+      console.log("Python dependencies verified successfully.");
+      launchAPI();
+    }
+  });
+}
+
+function launchAPI() {
+  console.log("Starting Python API server (api.py)...");
   const pythonProcess = spawn("python3", ["api.py"], {
     stdio: "inherit",
     detached: false
   });
 
   pythonProcess.on("error", (err) => {
-    console.error("Failed to start Python Flask API server:", err);
+    console.error("Failed to start Python API server:", err);
   });
 
   process.on("exit", () => {
@@ -147,6 +248,56 @@ async function startServer() {
 
   // Start the Python Flask API server
   startBackendAPI();
+
+  // Diagnostic endpoints to troubleshoot Python dependencies
+  app.get("/api/python-diag", async (req, res) => {
+    try {
+      const execPromise = (cmd: string, args: string[]) => {
+        return new Promise((resolve) => {
+          const child = spawn(cmd, args);
+          let stdout = "";
+          let stderr = "";
+          child.stdout?.on("data", (data) => { stdout += data.toString(); });
+          child.stderr?.on("data", (data) => { stderr += data.toString(); });
+          child.on("close", (code) => {
+            resolve({ code, stdout, stderr });
+          });
+        });
+      };
+
+      const pyVersion = await execPromise("python3", ["--version"]);
+      const pipVersion = await execPromise("python3", ["-m", "pip", "--version"]);
+      const pipList = await execPromise("python3", ["-m", "pip", "list"]);
+      const checkImport = await execPromise("python3", ["-c", "import uvicorn, fastapi; print('Successfully imported')"]);
+
+      return res.json({
+        pyVersion,
+        pipVersion,
+        pipList,
+        checkImport
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/python-install", async (req, res) => {
+    try {
+      const child = spawn("python3", ["-m", "pip", "install", "-r", "requirements.txt"]);
+      let stdout = "";
+      let stderr = "";
+      child.stdout?.on("data", (data) => { stdout += data.toString(); });
+      child.stderr?.on("data", (data) => { stderr += data.toString(); });
+      
+      const code = await new Promise((resolve) => {
+        child.on("close", resolve);
+      });
+
+      return res.json({ code, stdout, stderr });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
 
   // Middleware to support base64 file uploads up to 20MB
   app.use(express.json({ limit: "20mb" }));
