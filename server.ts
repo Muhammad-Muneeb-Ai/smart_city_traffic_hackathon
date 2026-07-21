@@ -142,7 +142,7 @@ function getGemini(): GoogleGenAI {
 }
 
 async function generateContentWithRetryAndFallback(ai: GoogleGenAI, image: string, mimeType: string) {
-  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"];
+  const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
@@ -162,7 +162,7 @@ async function generateContentWithRetryAndFallback(ai: GoogleGenAI, image: strin
               },
             },
             {
-              text: "Analyze this traffic scene image. Detect all vehicles (cars, trucks, buses, motorcycles, etc.) and read their license plates. For the black car in the foreground, read the plate exactly as 'E 1443 MN'. For other vehicles, read their plate if visible, or leave plate as empty string. Also provide bounding box percentages (0 to 100) of their coordinates on the image.",
+              text: "Analyze this traffic scene image. Detect all vehicles (cars, trucks, buses, motorcycles, SUVs, etc.). Read each license plate exactly as physically printed on the vehicle. CRITICAL ACCURACY REQUIREMENT: Do not guess, speculate, or hallucinate characters. If a license plate is blurry, distant, shadowed, obscured, or otherwise not 100% clearly readable, you MUST leave the 'plate' field as an empty string (''). Only output plate characters that are perfectly visible and legible. Provide bounding box percentage coordinates (ymin, xmin, ymax, xmax) from 0 to 100 relative to the image dimensions.",
             },
           ],
           config: {
@@ -178,7 +178,7 @@ async function generateContentWithRetryAndFallback(ai: GoogleGenAI, image: strin
                   },
                   plate: {
                     type: Type.STRING,
-                    description: "License plate number. Read accurately, including spaces. E.g. 'E 1443 MN'.",
+                    description: "License plate number. Read accurately. If blurry or unreadable, set to an empty string.",
                   },
                   confidence: {
                     type: Type.INTEGER,

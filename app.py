@@ -99,7 +99,7 @@ def is_plate_mapped_to_car(plate_box_global, car_box_global):
     inside = (px1 >= cx1 - margin) and (py1 >= cy1 - margin) and (px2 <= cx2 + margin) and (py2 <= cy2 + margin)
     return inside
 
-def perform_ocr(reader, image_crop, ocr_conf_threshold=0.70, area_threshold=2500, blur_threshold=80.0):
+def perform_ocr(reader, image_crop, ocr_conf_threshold=0.80, area_threshold=2500, blur_threshold=90.0):
     import re
     import cv2
     try:
@@ -127,10 +127,16 @@ def perform_ocr(reader, image_crop, ocr_conf_threshold=0.70, area_threshold=2500
             text = best_match[1]
             conf = best_match[2]
             
-            # Hint 2: Rigid OCR Confidence Score Thresholding (strictly >= 0.70)
-            if conf >= 0.70:
+            # Hint 2: Rigid OCR Confidence Score Thresholding
+            if conf >= ocr_conf_threshold:
                 # Standard cleanup (uppercase & alphanumeric only)
                 clean_text = "".join(e for e in text if e.isalnum()).upper()
+                
+                # Check for character mix to filter out non-plate noise (e.g., radiator grills or signpost lines)
+                has_letter = any(c.isalpha() for c in clean_text)
+                has_digit = any(c.isdigit() for c in clean_text)
+                if not (has_letter and has_digit):
+                    return "Unknown"
                 
                 # Check length to bypass short/long noisy text
                 if len(clean_text) >= 4 and len(clean_text) <= 12:
@@ -159,6 +165,12 @@ def main():
     confidence_threshold = st.sidebar.slider("Detection Confidence", 0.50, 1.0, 0.60)
     line_position_ratio = st.sidebar.slider("Virtual Line Position (Y)", 0.1, 0.9, 0.6)
     process_frame_skip = st.sidebar.selectbox("Frame Skip (for speed)", [1, 2, 3, 5], index=1)
+    
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Anti-Hallucination OCR")
+    ocr_threshold = st.sidebar.slider("OCR Plate Confidence", 0.50, 1.0, 0.80, help="Higher values strictly prevent guessing blurry/shadowed plates.")
+    blur_threshold = st.sidebar.slider("Plate Sharpness Filter", 30.0, 200.0, 90.0, help="Laplacian variance threshold. Higher means plates must be very clear and focused.")
+    st.sidebar.markdown("---")
     
     upload_file = st.sidebar.file_uploader("Upload Traffic Video", type=["mp4", "avi", "mov"])
     
@@ -493,7 +505,12 @@ def main():
                                         # Strict plate area threshold check (minimum 2500 pixels) and aspect ratio (1.5 to 5.5) to prevent distant hallucinations
                                         if is_inside and p_area >= 2500 and (1.5 <= aspect_ratio <= 5.5):
                                             plate_crop = vehicle_crop[py1:py2, px1:px2].copy()
-                                            plate_text = perform_ocr(reader, plate_crop)
+                                            plate_text = perform_ocr(
+                                                reader, 
+                                                plate_crop, 
+                                                ocr_conf_threshold=ocr_threshold, 
+                                                blur_threshold=blur_threshold
+                                            )
                                         else:
                                             plate_text = "Unknown"
                                     else:
