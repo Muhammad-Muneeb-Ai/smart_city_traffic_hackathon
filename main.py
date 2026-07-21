@@ -1,38 +1,12 @@
-import sys
-import subprocess
-
-try:
-    import uvicorn
-    import fastapi
-except ImportError:
-    print("uvicorn or fastapi not found in Python path. Attempting automatic installation...")
-    try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt", "--break-system-packages"], check=True)
-    except Exception as e1:
-        print(f"Standard install failed: {e1}. Trying with --user...")
-        try:
-            subprocess.run([sys.executable, "-m", "pip", "install", "--user", "-r", "requirements.txt", "--break-system-packages"], check=True)
-        except Exception as e2:
-            print(f"User install failed: {e2}. Attempting direct installation of uvicorn and fastapi...")
-            try:
-                subprocess.run([sys.executable, "-m", "pip", "install", "uvicorn", "fastapi", "--break-system-packages"], check=True)
-            except Exception as e3:
-                print(f"Failed to install uvicorn and fastapi: {e3}")
-                sys.exit(1)
-
 import os
 import time
-import random
 import sqlite3
-import numpy as np
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Dict, Any
+from flask import Flask, jsonify, request
 
 # Import our SQLite database manager
-from database import db
+from database import db, DB_PATH
 
-app = FastAPI(title="Traffic Flow AI FastAPI Backend", version="1.0.0")
+app = Flask(__name__)
 
 # --- Global In-Memory Real-Time State ---
 live_count = 0
@@ -44,17 +18,8 @@ last_update_time = 0.0
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 LIVE_STATS_JSON = os.path.join(PROJECT_DIR, "database", "live_stats.json")
-from database import DB_PATH
 
-class MetricsPayload(BaseModel):
-    live_count: int
-    cumulative_count: int
-    avg_speed: float
-    plates_detected: int
-    active_alerts: int
-    flow_status: str
-
-def query_sqlite_metrics() -> Dict[str, Any]:
+def query_sqlite_metrics():
     """Queries the local SQLite database traffic_data.db directly to compute fresh, real metrics."""
     if not os.path.exists(DB_PATH):
         return {
@@ -100,7 +65,7 @@ def query_sqlite_metrics() -> Dict[str, Any]:
             "total_count": total_count
         }
     except Exception as e:
-        print(f"Error querying SQLite metrics in FastAPI: {e}")
+        print(f"Error querying SQLite metrics in Flask: {e}")
         return {
             "plates_detected": 0,
             "avg_speed": 0.0,
@@ -108,7 +73,7 @@ def query_sqlite_metrics() -> Dict[str, Any]:
             "total_count": 0
         }
 
-def get_live_metrics() -> Dict[str, Any]:
+def get_live_metrics():
     """
     Fetches the live traffic metrics. Integrates live pipeline post variables
     with fresh values queried directly from the local traffic_data.db SQLite file.
@@ -181,32 +146,39 @@ def get_live_metrics() -> Dict[str, Any]:
         "flow_status": "No Traffic"
     }
 
-@app.get("/api/health")
+@app.route("/api/health", methods=["GET"])
 def health():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "Traffic Flow AI FastAPI Backend"}
+    return jsonify({"status": "healthy", "service": "Traffic Flow AI Flask Backend"})
 
-@app.get("/api/stats")
+@app.route("/api/stats", methods=["GET"])
 def stats_endpoint():
     """Returns a JSON payload with live_count, avg_speed, plates_detected, active_alerts, and flow_status."""
-    return get_live_metrics()
+    return jsonify(get_live_metrics())
 
-@app.get("/api/traffic-metrics")
+@app.route("/api/traffic-metrics", methods=["GET"])
 def traffic_metrics_endpoint():
-    """FastAPI background endpoint specifically serving live variables dynamically to the front-end proxy."""
-    return get_live_metrics()
+    """Flask background endpoint specifically serving live variables dynamically to the front-end proxy."""
+    return jsonify(get_live_metrics())
 
-@app.post("/api/metrics")
-@app.post("/api/update-metrics")
-def update_metrics(payload: MetricsPayload):
+@app.route("/api/metrics", methods=["GET"])
+def get_metrics_endpoint():
+    """Returns live metrics directly on the /api/metrics GET endpoint."""
+    return jsonify(get_live_metrics())
+
+@app.route("/api/metrics", methods=["POST"])
+@app.route("/api/update-metrics", methods=["POST"])
+def update_metrics():
     """Allows the tracking pipeline to post real-time updates directly to global variables."""
     global live_count, plates_detected, avg_speed, active_alerts, flow_status, last_update_time
     
-    live_count = payload.live_count
-    plates_detected = payload.plates_detected
-    avg_speed = payload.avg_speed
-    active_alerts = payload.active_alerts
-    flow_status = payload.flow_status
+    payload = request.get_json() or {}
+    
+    live_count = int(payload.get("live_count", 0))
+    plates_detected = int(payload.get("plates_detected", 0))
+    avg_speed = float(payload.get("avg_speed", 0.0))
+    active_alerts = int(payload.get("active_alerts", 0))
+    flow_status = str(payload.get("flow_status", "No Traffic"))
     last_update_time = time.time()
     
     # Zero Traffic Auto-Reset Handled here for incoming pipeline data
@@ -233,15 +205,9 @@ def update_metrics(payload: MetricsPayload):
     except Exception as e:
         pass
         
-    return {"status": "success", "message": "Metrics updated successfully"}
-
-@app.get("/api/metrics")
-def get_metrics_endpoint():
-    """Returns live metrics directly on the /api/metrics GET endpoint."""
-    return get_live_metrics()
+    return jsonify({"status": "success", "message": "Metrics updated successfully"})
 
 if __name__ == "__main__":
-    import uvicorn
-    # Start the FastAPI server on port 5000 (proxied by Node server on port 3000)
-    print("Launching FastAPI application via uvicorn from main.py...")
-    uvicorn.run("main:app", host="127.0.0.1", port=5000, reload=False)
+    # Start the Flask server on port 5000 (proxied by Node server on port 3000)
+    print("Launching Flask application from main.py...")
+    app.run(host="127.0.0.1", port=5000, debug=False)

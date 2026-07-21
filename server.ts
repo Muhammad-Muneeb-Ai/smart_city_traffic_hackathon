@@ -7,12 +7,16 @@ import { GoogleGenAI, Type } from "@google/genai";
 let aiClient: GoogleGenAI | null = null;
 
 function startBackendAPI() {
-  console.log("Checking Python environment for uvicorn and fastapi...");
-  const check = spawn("python3", ["-c", "import uvicorn, fastapi"], { stdio: "ignore" });
+  console.log("Checking Python environment for flask...");
+  const check = spawn("python3", ["-c", "import flask"], { stdio: "ignore" });
+  
+  check.on("error", (err) => {
+    console.error("Error checking Python environment:", err.message);
+  });
   
   check.on("close", async (code) => {
     if (code !== 0) {
-      console.log("uvicorn or fastapi not found. Finding an available pip installer...");
+      console.log("flask not found. Finding an available pip installer...");
       
       const runCommand = (cmd: string, args: string[]) => {
         return new Promise<{ code: number; output: string }>((resolve) => {
@@ -21,6 +25,11 @@ function startBackendAPI() {
           child.stdout?.on("data", (data) => { logData += data.toString(); });
           child.stderr?.on("data", (data) => { logData += data.toString(); });
           
+          child.on("error", (err) => {
+            logData += `\nError spawning ${cmd}: ${err.message}\n`;
+            resolve({ code: -1, output: logData });
+          });
+
           child.on("close", (childCode) => {
             resolve({ code: childCode || 0, output: logData });
           });
@@ -259,6 +268,12 @@ async function startServer() {
           let stderr = "";
           child.stdout?.on("data", (data) => { stdout += data.toString(); });
           child.stderr?.on("data", (data) => { stderr += data.toString(); });
+          
+          child.on("error", (err) => {
+            stderr += `\nError spawning ${cmd}: ${err.message}\n`;
+            resolve({ code: -1, stdout, stderr });
+          });
+
           child.on("close", (code) => {
             resolve({ code, stdout, stderr });
           });
@@ -289,8 +304,13 @@ async function startServer() {
       child.stdout?.on("data", (data) => { stdout += data.toString(); });
       child.stderr?.on("data", (data) => { stderr += data.toString(); });
       
+      child.on("error", (err) => {
+        stderr += `\nError spawning pip: ${err.message}\n`;
+      });
+      
       const code = await new Promise((resolve) => {
         child.on("close", resolve);
+        child.on("error", () => resolve(-1));
       });
 
       return res.json({ code, stdout, stderr });

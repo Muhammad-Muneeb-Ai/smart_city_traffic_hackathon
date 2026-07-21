@@ -17,3 +17,4 @@ pymysql
 psycopg2-binary
 fastapi
 uvicorn
+requests
