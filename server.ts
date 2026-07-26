@@ -8,13 +8,20 @@ let aiClient: GoogleGenAI | null = null;
 
 function startBackendAPI() {
   console.log("Checking Python environment for flask...");
+  let handled = false;
+
   const check = spawn("python3", ["-c", "import flask"], { stdio: "ignore" });
   
   check.on("error", (err) => {
     console.error("Error checking Python environment:", err.message);
+    if (!handled) {
+      handled = true;
+      console.warn("Python environment not available or failed to check. Proceeding with Node API server.");
+    }
   });
   
   check.on("close", async (code) => {
+    if (handled) return;
     if (code !== 0) {
       console.log("flask not found. Finding an available pip installer...");
       
@@ -77,7 +84,7 @@ function startBackendAPI() {
 
       if (!pipCmd) {
         diagLog += "ERROR: No pip command found in the system!\n";
-        await fs.writeFile(path.join(process.cwd(), "pip_install.log"), diagLog, "utf-8");
+        await fs.writeFile(path.join(process.cwd(), "pip_install.log"), diagLog, "utf-8").catch(() => {});
         console.error("No pip command found in system. Unable to install Python requirements.");
         launchAPI();
         return;
@@ -106,7 +113,7 @@ function startBackendAPI() {
         success = (install3.code === 0);
       }
 
-      await fs.writeFile(path.join(process.cwd(), "pip_install.log"), diagLog, "utf-8");
+      await fs.writeFile(path.join(process.cwd(), "pip_install.log"), diagLog, "utf-8").catch(() => {});
       console.log(`Pip installation finished. Log written to pip_install.log.`);
       launchAPI();
     } else {
@@ -507,7 +514,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*all", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
